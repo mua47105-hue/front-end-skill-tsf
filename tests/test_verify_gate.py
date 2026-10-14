@@ -67,6 +67,37 @@ opening a second dashboard.
 Swiss editorial meets dark precision cockpit: a dense instrument surface with
 generous typographic hierarchy and a single accent hue reserved for live state.
 
+## Divergent Metaphor Exploration
+
+Three concepts were written before one was chosen. The two rejections are
+recorded so the choice is auditable rather than a preference.
+
+- Concept 1 (Rejected Industry Cliche): a glowing globe with arcs of light
+  between continents, the standard "global infrastructure" visual. Banned: it
+  is the first thought for every network product and it communicates nothing.
+- Concept 2 (Rejected Safe Editorial): a centered headline, a two-column
+  feature grid, and a dark testimonial strip. Banned: it is the template every
+  competitor ships, and it is indistinguishable from them at a glance.
+- Concept 3 (Selected Lateral World Metaphor): a mechanical signal path. The
+  page behaves like an instrument panel on a rack: meters read out real
+  latency, sections are bays rather than cards, and the reader inspects a
+  system instead of scrolling past claims. This metaphor governs every section
+  name, the mono labels, and the single accent hue reserved for live state.
+
+## Hero Interactive Instrument
+
+- Element: `data-interactive-hero` on the hero header, containing a canvas
+  region gauge.
+- Mechanic: a pointer-driven gauge plotting p50 for eu-west, us-east, and
+  ap-south. The bar nearest the cursor is drawn in the accent hue and the
+  readout reports that region's latency.
+- Input bindings: `pointerenter`, `pointermove`, and `pointerleave` on the
+  canvas; `resize` repaints at the clamped device pixel ratio.
+- Response budget: the readout updates within one frame of the pointer move.
+- Reduced motion: the gauge still paints once on load and on pointer move,
+  with no looping animation at all.
+- Idle cost: the canvas is event-driven, so no frame is scheduled while idle.
+
 ## Taste Dials
 
 - DESIGN_VARIANCE: 7
@@ -221,6 +252,25 @@ Repetition ban: no two adjacent sections share a layout archetype, and no two
 adjacent sections may both be 3 column card rows. Section 2 is the only pinned
 section and the only section with scroll choreography.
 
+## Hero Interactive Instrument
+
+| Property | Value |
+| --- | --- |
+| Element | `<header data-interactive-hero>` wrapping a canvas gauge |
+| Mechanic | pointer-driven p50 gauge for eu-west, us-east, ap-south |
+| Input bindings | pointerenter, pointermove, pointerleave, resize |
+| Uniforms or state | hover index selects the accent bar and the readout |
+| Response budget | one frame, under 16 ms |
+| Reduced motion | single paint per event, no render loop |
+| Idle cost | zero, the canvas only repaints on an event |
+
+## Design Spells
+
+| Spell | Element | Trigger | Tactile result | Reduced motion |
+| --- | --- | --- | --- | --- |
+| magnetic-spring | hero CTA buttons | pointer proximity | pull toward cursor, overshoot back | transform removed |
+| hotkey-hud | hero keycap row | press 1, 2, or 3 | smooth jump to the section, keycap flash | instant jump |
+
 ## Scrollytelling Beat Table
 
 | Step ID | Card heading | Card copy | data-camera | data-layer | Scrub action (0..1) |
@@ -279,8 +329,50 @@ PAGE_TEMPLATE = """<!doctype html>
   }
   h1, h2 { text-wrap: balance; font-family: var(--font-display); }
   p { text-wrap: pretty; max-width: 65ch; }
-  .hero { padding: 6rem 1rem; }
-  .hero h1 { font-size: var(--text-hero); line-height: 1.02; margin: 0 0 1rem; }
+  .hero {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 2rem;
+    align-items: end;
+    padding: 6rem 1rem;
+  }
+  .hero__copy { grid-column: 1; }
+  .hero__instrument { grid-column: 2; display: grid; gap: 1rem; }
+  .hero__title { font-size: var(--text-hero); line-height: 1.02; margin: 0 0 1rem; }
+  .hero__actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+  .hero__gauge {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    cursor: crosshair;
+  }
+  .hero__readout {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .keycaps { grid-column: 1 / -1; display: flex; gap: 0.75rem; }
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+    background: var(--surface-elevated);
+    color: var(--ink-secondary);
+    font: inherit;
+    cursor: pointer;
+  }
+  .keycap kbd { font-family: var(--font-mono); font-size: 0.8125rem; }
+  .keycap:hover { background: var(--accent-wash); color: var(--ink-primary); }
+  .keycap:focus-visible { outline: 2px solid var(--ink-accent); outline-offset: 2px; }
+  .keycap.is-flashing { background: var(--ink-accent); color: var(--surface-bg); }
   .story { display: grid; grid-template-columns: 4fr 8fr; gap: 2rem; }
   .steps { display: grid; gap: 18vh; padding-block: 16vh; }
   .step { opacity: 0.42; transition: opacity 200ms var(--ease-out); }
@@ -322,10 +414,26 @@ PAGE_TEMPLATE = """<!doctype html>
 </head>
 <body>
 
-<header class="hero">
-  <h1>A request leaves the edge in 4&nbsp;ms</h1>
-  <p>Every call your backend makes crosses four boundaries before it reaches a
-  customer. Here is the path, and the three places it can stall.</p>
+<header class="hero" data-interactive-hero>
+  <div class="hero__copy">
+    <h1 class="hero__title">A request leaves the edge in 4&nbsp;ms</h1>
+    <p class="hero__lede">Every call your backend makes crosses four boundaries
+    before it reaches a customer. Here is the path, and the three places it
+    can stall.</p>
+    <div class="hero__actions">
+      <a class="btn" href="#story" data-spell="magnetic-spring">Trace a request</a>
+      <a class="btn" href="#start" data-spell="magnetic-spring">Read the budget</a>
+    </div>
+  </div>
+  <div class="hero__instrument">
+    <canvas id="hero-gauge" class="hero__gauge" role="img"
+      aria-label="Live region latency gauge driven by pointer position"></canvas>
+    <p id="hero-readout" class="hero__readout" aria-live="polite">eu-west p50 11 ms</p>
+  </div>
+  <nav class="keycaps" data-spell="hotkey-hud" aria-label="Section shortcuts">
+    <button type="button" class="keycap" data-jump="story" data-key="1"><kbd>1</kbd> Path</button>
+    <button type="button" class="keycap" data-jump="start" data-key="3"><kbd>3</kbd> Start</button>
+  </nav>
 </header>
 
 <main>
@@ -397,7 +505,7 @@ PAGE_TEMPLATE = """<!doctype html>
   </section>
 </main>
 
-<footer class="hero">
+<footer class="hero" id="start">
   <button class="btn" type="button">Start a 14 day trace trial</button>
 </footer>
 
@@ -668,7 +776,7 @@ class TestRepositoryLayout(unittest.TestCase):
             with self.subTest(path=str(path)):
                 self.assertTrue(path.is_file(), f"missing required file: {path}")
 
-    def test_exactly_five_spokes_with_expected_names(self):
+    def test_exactly_six_spokes_with_expected_names(self):
         names = sorted(p.name for p in SPOKE_DIR.glob("spoke-*.md"))
         self.assertEqual(
             names,
@@ -678,8 +786,22 @@ class TestRepositoryLayout(unittest.TestCase):
                 "spoke-03-scrollytelling-layout.md",
                 "spoke-04-implementation-craft.md",
                 "spoke-05-gauntlet-verification.md",
+                "spoke-06-creative-shaders-physics.md",
             ],
         )
+        hub = HUB_SKILL.read_text(encoding="utf-8")
+        for name in names:
+            with self.subTest(spoke=name):
+                self.assertIn(name, hub, f"{name} must be routed from the hub")
+
+    def test_hub_routes_spoke_six_to_stage_five(self):
+        hub = HUB_SKILL.read_text(encoding="utf-8")
+        self.assertIn("spoke-06-creative-shaders-physics.md", hub)
+        self.assertIn("DESIGN_VARIANCE >= 6", hub)
+        self.assertIn("MOTION_INTENSITY >= 6", hub)
+        self.assertIn("data-interactive-hero", hub)
+        self.assertIn("data-spell", hub)
+        self.assertIn("Divergent Metaphor Exploration", hub)
 
     def test_scripts_are_executable(self):
         self.assertTrue(os.access(VERIFY_GATE, os.X_OK), "verify_gate.py must be chmod +x")
@@ -1106,6 +1228,8 @@ export function NetworkStage() {
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    const focus = svg.focus;
+    void focus;
   }, []);
 
   return (
@@ -1126,7 +1250,7 @@ export function NetworkStage() {
         ))}
       </div>
 
-      <figure id="stage" className="stage sticky top-0 h-screen">
+      <figure id="stage" className="stage sticky top-0 h-screen" data-interactive-hero>
         <svg ref={svgRef} viewBox="0 0 1200 800" role="img" aria-label="Edge network topology">
           <rect id="cam-establish" x="0" y="0" width="1200" height="800" opacity="0" fill="none" />
           <rect id="cam-node" x="420" y="180" width="420" height="300" opacity="0" fill="none" />
@@ -1142,6 +1266,26 @@ export function NetworkStage() {
         </svg>
       </figure>
     </section>
+  );
+}
+
+export function HeroInstrument() {
+  return (
+    <header className="hero" data-interactive-hero>
+      <canvas
+        className="hero__gauge"
+        role="img"
+        aria-label="Live region latency gauge driven by pointer position"
+      />
+      <a className="btn" href="#story" data-spell="magnetic-spring">
+        Trace a request
+      </a>
+      <nav className="keycaps" data-spell="hotkey-hud" aria-label="Section shortcuts">
+        <button type="button" className="keycap" data-jump="story" data-key="1">
+          <kbd>1</kbd> Path
+        </button>
+      </nav>
+    </header>
   );
 }
 '''
@@ -1227,6 +1371,130 @@ class TestAuditRegressions(GateTestCase):
         )
         self.assertNotIn("GATE 6 PASSED", result.stdout)
 
+    def test_phase_one_fails_without_divergent_metaphor_or_hero_instrument(self):
+        brief = self.studio_text("01-BRIEF.md")
+        for concept in (
+            "Divergent Metaphor Exploration",
+            "Hero Interactive Instrument",
+            "Rejected Industry Cliche",
+            "Rejected Safe Editorial",
+            "Selected Lateral World Metaphor",
+        ):
+            self.assertIn(concept, brief, f"fixture setup must include {concept}")
+
+        stripped = brief.replace("Divergent Metaphor Exploration", "Art direction notes")
+        self.write("01-BRIEF.md", stripped)
+        self.assert_gate_fails(
+            1, contains="missing required heading 'Divergent Metaphor Exploration'"
+        )
+
+        restored = self.studio_text("01-BRIEF.md").replace(
+            "`data-interactive-hero`", "the hero centerpiece"
+        )
+        self.assertNotIn("data-interactive-hero", restored)
+        self.write("01-BRIEF.md", restored)
+        result = self.assert_gate_fails(1)
+        self.assertIn(
+            "never marks it data-interactive-hero", result.stdout,
+            "the brief must point Stage 5 at the data-interactive-hero attribute",
+        )
+
+    def test_phase_four_fails_without_hero_instrument_or_design_spells(self):
+        sheet = self.studio_text("04-BEAT-SHEET.md")
+        for heading in ("Hero Interactive Instrument", "Design Spells"):
+            self.assertIn(f"## {heading}", sheet, f"fixture setup must include {heading}")
+
+        without_hero = sheet.replace("## Hero Interactive Instrument", "## Hero notes")
+        self.write("04-BEAT-SHEET.md", without_hero)
+        result = self.assert_gate_fails(4, contains="Hero Interactive Instrument")
+
+        without_spells = sheet.replace("## Design Spells", "## Interaction notes")
+        self.write("04-BEAT-SHEET.md", without_spells)
+        self.assert_gate_fails(4, contains="Design Spells")
+
+    def test_phase_five_fails_when_high_variance_missing_interactive_hero_or_spells(self):
+        self.assertIn("DESIGN_VARIANCE: 7", self.studio_text("01-BRIEF.md"))
+        self.assert_gate_passes(5, self.page_path(), message=" for the full hero fixture")
+
+        page = self.page_text()
+        without_hero = page.replace(' data-interactive-hero', '', 1)
+        self.assertNotIn("data-interactive-hero", without_hero)
+        self.write_page("index.html", without_hero)
+        result = self.assert_gate_fails(5, self.page_path(), contains="data-interactive-hero")
+        self.assertIn("DESIGN_VARIANCE is 7", result.stdout)
+
+        restored = self.page_text().replace('data-spell="hotkey-hud"', "data-spell-value")
+        self.write_page("index.html", restored)
+        result = self.assert_gate_fails(5, self.page_path(), contains="data-spell")
+        self.assertIn("at least 2", result.stdout)
+
+    def test_phase_five_skips_interactive_checks_below_the_variance_threshold(self):
+        low = self.studio_text("01-BRIEF.md").replace("DESIGN_VARIANCE: 7", "DESIGN_VARIANCE: 5")
+        self.write("01-BRIEF.md", low)
+        bare = self.page_text().replace(' data-interactive-hero', '', 1)
+        bare = bare.replace('data-spell="magnetic-spring"', "data-role")
+        bare = bare.replace('data-spell="hotkey-hud"', "data-role")
+        self.write_page("index.html", bare)
+        result = self.assert_gate_passes(5, self.page_path())
+        self.assertIn("below the interactive-hero threshold", result.stdout)
+
+    def test_spoke_six_contains_webgl_spring_and_svg_filter_blueprints(self):
+        spoke = SPOKE_DIR / "spoke-06-creative-shaders-physics.md"
+        self.assertTrue(spoke.is_file(), "spoke-06 must exist")
+        text = spoke.read_text(encoding="utf-8")
+        self.assertGreater(len(text.splitlines()), 200, "spoke-06 must be a full blueprint set")
+
+        required = {
+            "WebGL1 canvas marker": "data-shader-stage",
+            "WebGL2 vertex shader": "attribute vec2 a_position",
+            "fragment shader precision": "precision highp float",
+            "u_time uniform": "uniform float u_time",
+            "u_resolution uniform": "uniform vec2 u_resolution",
+            "u_pointer uniform": "uniform vec2 u_pointer",
+            "u_scroll uniform": "uniform float u_scroll",
+            "domain-warped noise": "warp * 1.8",
+            "tactile dither": "dither",
+            "DPR clamp": "Math.min(window.devicePixelRatio || 1, 2)",
+            "IO pause": "IntersectionObserver",
+            "reduced motion guard": "prefers-reduced-motion: reduce",
+            "React Three Fiber Canvas": "from \"@react-three/fiber\"",
+            "R3F dpr clamp": "dpr={[1, 1.5]}",
+            "useFrame lerp": "useFrame",
+            "Hooke law": "-this.stiffness * (this.value - this.target)",
+            "damping term": "-this.damping * this.velocity",
+            "spring rest threshold": "restDisplacement = 0.001",
+            "auto sleep": "this.asleep = true",
+            "magnetic selector": 'data-spell="magnetic-spring"',
+            "grain turbulence": 'type="fractalNoise"',
+            "grain baseFrequency": 'baseFrequency="0.8"',
+            "grain octaves": 'numOctaves="3"',
+            "grain stitch": 'stitchTiles="stitch"',
+            "grain blend": 'mode="overlay"',
+            "liquid displacement": "<feDisplacementMap",
+            "liquid scale": 'scale="18"',
+            "gooey blur": "<feGaussianBlur",
+            "gooey stdDeviation": 'stdDeviation="10"',
+            "gooey alpha threshold": "0 0 0 22 -9",
+            "hidden defs svg": 'aria-hidden="true"',
+            "Web Audio context": "window.AudioContext || window.webkitAudioContext",
+            "AudioContext construction": "this.context = new Constructor()",
+            "12ms click": "duration = 0.012",
+            "opt-in sound toggle": 'data-spell="sound-toggle"',
+            "aria-pressed on toggle": 'aria-pressed="false"',
+            "hotkey selector": 'data-spell="hotkey-hud"',
+            "hotkey 1-5 range": 'event.key >= \'1\' && event.key <= \'5\'',
+            "command overlay": "startViewTransition",
+            "opt-in hero marker": "data-interactive-hero",
+        }
+        for label, needle in required.items():
+            with self.subTest(blueprint=label):
+                self.assertIn(needle, text, f"spoke-06 is missing the {label}")
+
+        for banned in ("TODO:", "FIXME:"):
+            with self.subTest(banned=banned):
+                self.assertNotIn(banned, text, "spoke-06 must ship zero truncation")
+        self.assertNotIn("// ...", text, "spoke-06 must ship zero ellipsis stubs")
+
     def test_phase_six_rejects_nonzero_console_or_page_errors(self):
         report = self.studio_text("06-GAUNTLET-REPORT.md").replace(
             "- console.error count: 0", "- console.error count: 5"
@@ -1298,6 +1566,7 @@ class TestHarnessMirrors(unittest.TestCase):
         self.assertRegex(plugin["version"], r"^\d+\.\d+\.\d+$")
         self.assertEqual(plugin["source"], "./")
         self.assertIn("./skills/frontend-studio-gauntlet", plugin["skills"])
+        self.assertEqual(plugin["version"], "2.0.0")
         for relative in plugin["skills"]:
             with self.subTest(skill=relative):
                 self.assertTrue((REPO_ROOT / relative).is_dir(), f"{relative} does not exist")

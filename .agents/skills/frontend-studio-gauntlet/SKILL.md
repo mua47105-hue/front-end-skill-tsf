@@ -23,11 +23,12 @@ This file is the **Hub**. The domain rules live one level deep in
    | 2 | Visual Researcher | `references/spoke-01-inspiration.md` |
    | 3 | Design Systems Architect | `references/spoke-02-tokens-antislop.md` |
    | 4 | Principal UX & Motion Architect | `references/spoke-03-scrollytelling-layout.md` |
-   | 5 | Senior Frontend Engineer | `references/spoke-04-implementation-craft.md` |
+   | 5 | Senior Frontend Engineer | `references/spoke-04-implementation-craft.md` **and**, when `DESIGN_VARIANCE >= 6` or `MOTION_INTENSITY >= 6`, also `references/spoke-06-creative-shaders-physics.md` |
    | 6 | QA & Blind Creative Critic | `references/spoke-05-gauntlet-verification.md` |
 
 3. Load a new spoke **only** when the stage unlocks. Do not preload. Do not
-   quote a spoke you have not read.
+   quote a spoke you have not read. Stage 5 is the one stage that may load two
+   spokes, and only for the dials that earn them.
 4. Each spoke is non-overlapping. If two spokes seem to disagree, the spoke
    that owns the stage wins.
 
@@ -74,13 +75,17 @@ Write `.studio/01-BRIEF.md` containing:
 - The chosen **Aesthetic Archetype** (for example: Swiss editorial, industrial
   hardware, luxury lookbook, dark precision cockpit, warm brutalist).
 - Three integer **taste dials**, each an explicit integer from 1 to 10:
-
-  | Dial | 1-3 means | 8-10 means |
-  | --- | --- | --- |
-  | `DESIGN_VARIANCE` | safe, familiar, low surprise | bold, idiosyncratic, surprising |
-  | `MOTION_INTENSITY` | static, no scroll motion | pinned stages, scrubbed camera |
-  | `VISUAL_DENSITY` | airy, lots of negative space | packed, data-rich, editorial |
-
+  `DESIGN_VARIANCE` (1 safe and familiar, 10 bold and idiosyncratic),
+  `MOTION_INTENSITY` (1 static, 10 pinned and scrubbed), `VISUAL_DENSITY`
+  (1 airy, 10 packed and data-rich).
+- `## Divergent Metaphor Exploration`: write 3 concepts before choosing one.
+  `Concept 1 (Rejected Industry Cliche)`: the obvious first-thought trope,
+  banned. `Concept 2 (Rejected Safe Editorial)`: the standard clean template,
+  banned. `Concept 3 (Selected Lateral World Metaphor)`: the non-obvious
+  physical, architectural, or instrument metaphor that governs the whole UI.
+- `## Hero Interactive Instrument`: a playable, interactive centerpiece marked
+  `data-interactive-hero` in the first viewport. Never a static headline
+  stacked on a screenshot.
 - The 2-3 pages or sections that matter most, and the one conversion action.
 
 ```bash
@@ -140,6 +145,13 @@ Read `references/spoke-03-scrollytelling-layout.md`. Then write
   the **Scrollytelling Beat Table** mapping every `data-step` ID to its card
   copy (40 words maximum per card), its `data-camera` target ID, its
   comma-separated `data-layer` IDs, and a `0..1` scrub action.
+- `## Hero Interactive Instrument`: exact DOM, Canvas, SVG, or WebGL mechanics
+  plus the user input bindings (`pointermove`, drag, scrub, hotkey, state
+  toggle) that drive the hero centerpiece.
+- `## Design Spells`: at least 2 signature tactile micro-interactions marked
+  `data-spell="<name>"`, chosen from spoke 6: magnetic spring targets, a
+  `[1]`..`[5]` hotkey jumper, an SVG liquid or grain filter, a View
+  Transitions morph, or synthesized Web Audio clicks.
 
 The IDs you write here become hard contracts. Stage 5 must implement them
 exactly or the gate fails.
@@ -166,6 +178,10 @@ interface:
   stage. Typos are loud failures, never silent no-ops.
 - Prevent horizontal overflow (`overflow-x: clip`, `text-wrap: balance` on
   headings, `text-wrap: pretty` on body, touch targets at least 44x44px).
+- At `DESIGN_VARIANCE >= 6` the page must earn its variance: mark the hero
+  centerpiece `data-interactive-hero` and ship at least two live
+  `data-spell="..."` elements. Take the blueprints from
+  `references/spoke-06-creative-shaders-physics.md`.
 
 ```bash
 python3 <skill-dir>/scripts/verify_gate.py --phase 5 --dir .studio --target <entry-file-or-src-dir>

@@ -190,7 +190,134 @@ Spacing is a 4px/8px grid. Name the steps, then use the names everywhere:
 Durations: micro 120ms, control 200ms, section 480ms, camera 900ms. Anything
 scrubbed by scroll uses `--ease-out` only.
 
-## 5. Template: `.studio/03-TOKENS.css`
+## 5. Kinetic Typography & Variable Font Physics
+
+Display type is a physical body, not a picture of one. When a variable font
+exposes `wght` and `wdth`, you can bind scroll velocity to optical weight and
+skew, and the headline gains mass without a single extra keyframe.
+
+### 5.1 The velocity token
+
+`--scroll-velocity` is a signed unitless value, roughly `-1` to `1`, published
+from JS on every scroll frame and eased down so it decays instead of
+stuttering:
+
+```css
+@property --scroll-velocity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:root {
+  --scroll-velocity: 0;
+  --weight-dynamic: 500;
+  --width-dynamic: 100;
+}
+```
+
+Publish it with a decaying lerp, never a raw delta, or the skew jitters:
+
+```js
+let lastY = window.scrollY;
+let velocity = 0;
+let ticking = false;
+
+function publishVelocity() {
+  const y = window.scrollY;
+  const delta = y - lastY;
+  lastY = y;
+  const instant = Math.max(-1, Math.min(1, delta / 60));
+  velocity += (instant - velocity) * 0.18;
+  document.documentElement.style.setProperty(
+    '--scroll-velocity',
+    velocity.toFixed(4)
+  );
+  ticking = false;
+}
+
+window.addEventListener(
+  'scroll',
+  () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(publishVelocity);
+  },
+  { passive: true }
+);
+```
+
+### 5.2 Binding velocity to optical weight and skew
+
+The skew clamp is the whole trick. Four degrees is the ceiling; past that the
+type stops looking like type and starts looking like a bug:
+
+```css
+.kinetic-display {
+  font-variation-settings:
+    "wght" calc(var(--weight-dynamic) + (var(--scroll-velocity) * 120))
+    "wdth" calc(var(--width-dynamic) + (var(--scroll-velocity) * 6));
+  transform: skewY(
+    clamp(-4deg, calc(var(--scroll-velocity) * 0.15deg), 4deg)
+  );
+  transform-origin: 0 100%;
+  transition: transform 120ms var(--ease-out);
+}
+```
+
+Bounded by construction: `clamp()` guarantees the output never leaves
+`-4deg..4deg` no matter how violent the scroll, so the effect can never
+produce unreadable or overflow-inducing geometry.
+
+### 5.3 Split-line mask reveals
+
+Each line is a clipped band and its inner content slides up from below. This
+beats a fade because the type appears to have been *there* and been uncovered:
+
+```css
+.line-mask {
+  display: block;
+  overflow: clip;
+  padding-block: 0.08em;
+}
+
+.line-inner {
+  display: block;
+  transform: translateY(105%);
+  transition: transform 720ms var(--ease-out);
+}
+
+.is-revealed .line-inner {
+  transform: translateY(0);
+}
+
+.line-inner:nth-child(2) { transition-delay: 80ms; }
+.line-inner:nth-child(3) { transition-delay: 160ms; }
+```
+
+```html
+<h1 class="kinetic-display">
+  <span class="line-mask"><span class="line-inner">A request leaves</span></span>
+  <span class="line-mask"><span class="line-inner">the edge in 4&nbsp;ms</span></span>
+</h1>
+```
+
+Use `overflow: clip`, never `overflow: hidden`: `hidden` creates a scroll
+container and breaks `position: sticky` on any ancestor.
+
+### 5.4 Reduced motion is a cut, not a shorter slide
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .kinetic-display { transform: none; font-variation-settings: normal; }
+  .line-inner { transform: none; transition: none; }
+}
+```
+
+Leave the words visible. Reduced motion must never remove content, only the
+travel.
+
+## 6. Template: `.studio/03-TOKENS.css`
 
 The gate requires `:root`, `oklch(`, `clamp(`, and `--font-`, a minimum of 250
 characters, and zero banned hex codes. This template satisfies all of them.
@@ -340,7 +467,7 @@ Tailwind v4 equivalent (paste into your CSS entry, not into this file):
 }
 ```
 
-## 6. Pre-Flight Self Audit
+## 7. Pre-Flight Self Audit
 
 Run this list before invoking the gate:
 

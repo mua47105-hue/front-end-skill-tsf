@@ -64,6 +64,19 @@ site:pinterest.com "information design" OR "scrollytelling" interactive infograp
 site:pinterest.com "dark mode UI" bento grid precision typography
 ```
 
+**Creative Technologist / WebGL / Shader**
+
+```text
+site:pinterest.com "creative coding" OR "webgl shader UI" OR "interactive installation interface" typography
+```
+
+This one has no safe fallback, which is the point. The results skew toward
+shader playgrounds, installation work, and agency case studies that ship real
+interaction rather than a video of it. Sweep Awwwards with the same three
+keywords and hunt specifically for pages whose hero responds to the cursor.
+Steal the *instrument*, never the shader source: a domain-warped noise field
+with pointer lerp is a mechanic you can rebuild in an afternoon.
+
 Pair each Pinterest search with a real site sweep on Awwwards and Godly using
 the same three keywords. Pinterest supplies the mood, the site sweep supplies
 the mechanics you must reproduce.

@@ -124,6 +124,11 @@ STEP_CAMERA_PROP_RE = re.compile(r"""\bcamera\s*:\s*["'`]([A-Za-z0-9_-]+)["'`]""
 STEP_LAYERS_PROP_RE = re.compile(r"""\blayers\s*:\s*\[([^\]]+)\]""")
 STRING_LITERAL_RE = re.compile(r"""["'`]([A-Za-z0-9_-]+)["'`]""")
 
+#: Design Spell markers, e.g. data-spell="magnetic-spring".
+SPELL_ATTR_RE = re.compile(
+    r"""\bdata-spell\s*=\s*(?:["']([^"']+)["']|\{\s*["'`]([^"'`]+)["'`]\s*\})"""
+)
+
 #: Characters that mark a JSX expression as dynamic rather than a literal id.
 DYNAMIC_EXPR_CHARS = (".", "(", ")", "[", "]", "$", " ")
 
@@ -211,8 +216,19 @@ def require_headings(text: str, headings, path_name: str, report: PhaseReport) -
 # Phase 1: Product Director
 # --------------------------------------------------------------------------
 
-BRIEF_HEADINGS = ("Aesthetic Archetype",)
+BRIEF_HEADINGS = (
+    "Aesthetic Archetype",
+    "Divergent Metaphor Exploration",
+    "Hero Interactive Instrument",
+)
 DIALS = ("DESIGN_VARIANCE", "MOTION_INTENSITY", "VISUAL_DENSITY")
+
+#: All three divergent-metaphor steps must be documented, not just the winner.
+METAPHOR_STEPS = (
+    "Rejected Industry Cliche",
+    "Rejected Safe Editorial",
+    "Selected Lateral World Metaphor",
+)
 
 
 def find_dial(text: str, dial: str) -> int | None:
@@ -263,6 +279,30 @@ def verify_phase_1(studio: Path, report: PhaseReport) -> None:
             )
         else:
             report.ok(f"{dial} = {value}/10")
+
+    missing_steps = [step for step in METAPHOR_STEPS if step not in text]
+    if missing_steps:
+        for step in missing_steps:
+            report.fail(
+                f"{path.name} is missing the divergent metaphor step "
+                f"'{step}'. Document all three concepts: the rejected industry "
+                "cliche, the rejected safe editorial, and the selected lateral "
+                "world metaphor."
+            )
+    else:
+        report.ok(
+            f"{path.name} documents all {len(METAPHOR_STEPS)} divergent "
+            "metaphor steps"
+        )
+
+    if re.search(r"data-interactive-hero", text):
+        report.ok("hero instrument is marked data-interactive-hero")
+    else:
+        report.fail(
+            f"{path.name} defines a Hero Interactive Instrument but never marks "
+            "it data-interactive-hero. Stage 5 must be able to find it."
+        )
+
     check_placeholders(text, path.name, report)
 
 
@@ -360,7 +400,11 @@ def verify_phase_3(studio: Path, report: PhaseReport) -> None:
 # Phase 4: Principal UX & Motion Architect
 # --------------------------------------------------------------------------
 
-BEAT_SHEET_HEADINGS = ("Page Rhythm Overview",)
+BEAT_SHEET_HEADINGS = (
+    "Page Rhythm Overview",
+    "Hero Interactive Instrument",
+    "Design Spells",
+)
 
 
 def verify_phase_4(studio: Path, report: PhaseReport) -> None:
@@ -533,6 +577,61 @@ def verify_phase_5(studio: Path, target: Path | None, report: PhaseReport) -> No
         check_placeholders(text, path.name, report)
 
     combined = "\n".join(chunks)
+
+    # A high DESIGN_VARIANCE dial is a promise that the page ships an
+    # instrument and named tactile interactions, not a static render.
+    brief_path = studio / "01-BRIEF.md"
+    variance_dial = None
+    if brief_path.is_file():
+        variance_dial = find_dial(read_text(brief_path), "DESIGN_VARIANCE")
+
+    if variance_dial is not None and variance_dial >= 6:
+        if "data-interactive-hero" in combined:
+            hero_hits = len(re.findall(r"data-interactive-hero", combined))
+            report.ok(
+                f"DESIGN_VARIANCE {variance_dial}: data-interactive-hero "
+                f"present ({hero_hits} occurrence(s))"
+            )
+        else:
+            report.fail(
+                f"DESIGN_VARIANCE is {variance_dial}, so the hero centerpiece "
+                "must be an interactive instrument. No data-interactive-hero "
+                "attribute was found under the target. Add it to the hero "
+                "markup, or lower DESIGN_VARIANCE to 5 or below."
+            )
+
+        spell_names = sorted(
+            {
+                cleaned
+                for match in SPELL_ATTR_RE.findall(combined)
+                for cleaned in (clean_attr_value(match[0] or match[1] or ""),)
+                if cleaned
+            }
+        )
+        spell_count = len(spell_names)
+        if spell_count >= 2:
+            report.ok(
+                f"DESIGN_VARIANCE {variance_dial}: {spell_count} distinct "
+                f"Design Spell(s) declared: {', '.join(spell_names)}"
+            )
+        else:
+            occurrences = len(re.findall(r"\bdata-spell\b", combined))
+            detail = (
+                f"only {spell_count} distinct spell name(s)"
+                if occurrences
+                else "no data-spell attribute at all"
+            )
+            report.fail(
+                f"DESIGN_VARIANCE is {variance_dial}, so at least 2 "
+                f"data-spell=\"...\" elements are required, but found {detail}. "
+                "Ship at least two named tactile micro-interactions, or lower "
+                "DESIGN_VARIANCE to 5 or below."
+            )
+    elif variance_dial is not None:
+        report.ok(
+            f"DESIGN_VARIANCE {variance_dial} is below the interactive-hero "
+            "threshold of 6, so the instrument and spell checks are skipped"
+        )
 
     if "prefers-reduced-motion" in combined:
         report.ok("prefers-reduced-motion handling present in source")

@@ -140,7 +140,8 @@ of the three Stage 4 invariants.
     align-items: end;
     padding-block: var(--space-9);
   }
-  .hero h1 {
+  .hero__copy { grid-column: 1; }
+  .hero__title {
     font-family: var(--font-display);
     font-size: var(--text-hero);
     line-height: 1.02;
@@ -148,12 +149,82 @@ of the three Stage 4 invariants.
     margin: 0 0 var(--space-4);
   }
   .hero__lede { color: var(--ink-secondary); margin: 0; }
+  .hero__actions { display: flex; gap: var(--space-4); margin-top: var(--space-5); }
   .hero__meta {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     color: var(--ink-secondary);
     border-left: 1px solid var(--surface-border);
     padding-left: var(--space-4);
+  }
+
+  /* Split-line mask reveal for the hero title. */
+  .line-mask { display: block; overflow: clip; padding-block: 0.06em; }
+  .line-inner {
+    display: block;
+    transform: translateY(105%);
+    transition: transform 720ms var(--ease-out);
+  }
+  .is-revealed .line-inner { transform: translateY(0); }
+  .line-inner:nth-child(2) { transition-delay: 80ms; }
+
+  /* The hero instrument: a live canvas gauge with a magnetic pointer target. */
+  .hero__instrument {
+    grid-column: 2;
+    display: grid;
+    gap: var(--space-4);
+    justify-items: start;
+  }
+  .hero__gauge {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-md);
+    background: var(--surface-elevated);
+    cursor: crosshair;
+  }
+  .hero__readout {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Design spell: keyboard hotkey HUD. */
+  .keycaps {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: var(--space-3);
+  }
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-elevated);
+    color: var(--ink-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition: background 200ms var(--ease-out), color 200ms var(--ease-out);
+  }
+  .keycap kbd {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+  }
+  .keycap:hover { background: var(--accent-wash); color: var(--ink-primary); }
+  .keycap:focus-visible { outline: 2px solid var(--ink-accent); outline-offset: 2px; }
+  .keycap.is-flashing { background: var(--ink-accent); color: var(--surface-bg); }
+
+  .btn--ghost {
+    background: transparent;
+    color: var(--ink-primary);
   }
 
   .story { position: relative; display: grid; grid-template-columns: 4fr 8fr; gap: var(--space-6); }
@@ -248,14 +319,39 @@ of the three Stage 4 invariants.
 </head>
 <body>
 
-<header class="wrap hero">
-  <div>
-    <h1>A request leaves the edge in 4&nbsp;ms</h1>
+<header class="wrap hero" data-interactive-hero data-shader-stage>
+  <div class="hero__copy">
+    <h1 class="hero__title">
+      <span class="line-mask"><span class="line-inner">A request leaves the edge</span></span>
+      <span class="line-mask"><span class="line-inner">in 4&nbsp;ms</span></span>
+    </h1>
     <p class="hero__lede">
       Every call your backend makes crosses four boundaries before it reaches a
       customer. Here is the path, and the three places it can stall.
     </p>
+    <div class="hero__actions">
+      <a class="btn" href="#story" data-spell="magnetic-spring">Trace a request</a>
+      <a class="btn btn--ghost" href="#stage">Read the latency budget</a>
+    </div>
   </div>
+
+  <div class="hero__instrument">
+    <canvas
+      class="hero__gauge"
+      role="img"
+      aria-label="Live edge health gauge reflecting current region latency"
+    ></canvas>
+    <p class="hero__readout" id="hero-readout" aria-live="polite">
+      eu-west p50 11 ms
+    </p>
+  </div>
+
+  <nav class="keycaps" data-spell="hotkey-hud" aria-label="Section shortcuts">
+    <button type="button" class="keycap" data-jump="story" data-key="1"><kbd>1</kbd> Path</button>
+    <button type="button" class="keycap" data-jump="stage" data-key="2"><kbd>2</kbd> Gauge</button>
+    <button type="button" class="keycap" data-jump="start" data-key="3"><kbd>3</kbd> Start</button>
+  </nav>
+
   <p class="hero__meta">
     Meridian edge network<br>
     eu-west / us-east / ap-south<br>
@@ -363,6 +459,7 @@ of the three Stage 4 invariants.
   const stage = document.getElementById('stage');
   const readout = document.getElementById('readout');
   const meterFill = document.getElementById('meter-fill');
+  const heroReadout = document.getElementById('hero-readout');
   const steps = Array.from(document.querySelectorAll('[data-step]'));
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -483,6 +580,135 @@ of the three Stage 4 invariants.
       if (card) moveCamera(card.dataset.camera || 'cam-establish');
     }
   });
+
+  // ---------------------------------------------------------------------
+  // Hero interactive instrument: a canvas gauge that tracks the pointer.
+  // Marked data-interactive-hero on the <header>, driven here.
+  // ---------------------------------------------------------------------
+  const REGIONS = [
+    { name: 'eu-west', p50: 11 },
+    { name: 'us-east', p50: 38 },
+    { name: 'ap-south', p50: 74 }
+  ];
+
+  function bootHeroInstrument() {
+    const hero = document.querySelector('[data-interactive-hero]');
+    const canvas = hero && hero.querySelector('.hero__gauge');
+    if (!hero || !canvas) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    let hovered = false;
+
+    function paint() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const width = rect.width;
+      const height = rect.height;
+
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = 'rgba(128, 128, 128, 0.35)';
+      context.lineWidth = 1;
+
+      for (let index = 0; index < REGIONS.length; index += 1) {
+        const region = REGIONS[index];
+        const barHeight = (region.p50 / 90) * (height - 32);
+        const x = 24 + index * ((width - 48) / REGIONS.length);
+        const barWidth = (width - 48) / REGIONS.length - 18;
+
+        context.beginPath();
+        context.moveTo(x, height - 16);
+        context.lineTo(x, height - 16 - barHeight);
+        context.strokeStyle = hovered ? 'var(--ink-accent)' : 'rgba(128, 128, 128, 0.45)';
+        context.stroke();
+
+        context.fillStyle = hovered ? 'var(--ink-accent)' : 'rgba(128, 128, 128, 0.55)';
+        context.fillRect(x, height - 16 - barHeight, barWidth, barHeight);
+      }
+    }
+
+    function reportNearest(event) {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = (event.clientX - rect.left) / Math.max(rect.width, 1);
+      const index = Math.min(
+        REGIONS.length - 1,
+        Math.max(0, Math.floor(ratio * REGIONS.length))
+      );
+      const region = REGIONS[index];
+      heroReadout.textContent = `${region.name} p50 ${region.p50} ms`;
+    }
+
+    canvas.addEventListener('pointerenter', () => {
+      hovered = true;
+      paint();
+    }, { passive: true });
+    canvas.addEventListener('pointermove', (event) => {
+      reportNearest(event);
+      paint();
+    }, { passive: true });
+    canvas.addEventListener('pointerleave', () => {
+      hovered = false;
+      heroReadout.textContent = 'eu-west p50 11 ms';
+      paint();
+    }, { passive: true });
+    window.addEventListener('resize', paint, { passive: true });
+
+    paint();
+  }
+
+  bootHeroInstrument();
+
+  // ---------------------------------------------------------------------
+  // Design spell: keyboard hotkey HUD. Digits jump, keycaps flash.
+  // ---------------------------------------------------------------------
+  function bootHotkeyHud() {
+    const keycaps = document.querySelector('[data-spell="hotkey-hud"]');
+    if (!keycaps) return;
+
+    function jumpTo(id) {
+      const target = document.getElementById(id);
+      if (!target) return;
+      target.scrollIntoView({
+        behavior: reducedMotion.matches ? 'auto' : 'smooth',
+        block: 'start'
+      });
+      const keycap = keycaps.querySelector(`.keycap[data-jump="${id}"]`);
+      if (keycap) {
+        keycap.classList.remove('is-flashing');
+        requestAnimationFrame(() => keycap.classList.add('is-flashing'));
+      }
+    }
+
+    keycaps.addEventListener('click', (event) => {
+      const keycap = event.target.closest('.keycap[data-jump]');
+      if (!keycap) return;
+      event.preventDefault();
+      jumpTo(keycap.dataset.jump);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const node = event.target;
+      if (node && (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.isContentEditable)) {
+        return;
+      }
+      if (event.key < '1' || event.key > '9') return;
+      const keycap = keycaps.querySelector(`.keycap[data-key="${event.key}"]`);
+      if (!keycap) return;
+      event.preventDefault();
+      jumpTo(keycap.dataset.jump);
+    });
+
+    document.querySelectorAll('.line-mask').forEach((mask) => {
+      const inner = mask.querySelector('.line-inner');
+      if (inner) inner.style.transform = 'translateY(0)';
+    });
+  }
+
+  bootHotkeyHud();
 </script>
 
 </body>
@@ -704,7 +930,11 @@ export function NetworkStage() {
         ))}
       </div>
 
-      <figure id="stage" className="stage sticky top-0 h-screen">
+      <figure id="stage" className="stage sticky top-0 h-screen" data-interactive-hero>
+        <div className="stage__head">
+          <h2 className="stage__title">Live region gauge</h2>
+          <p className="stage__hint">Move the pointer across the plot to read p50.</p>
+        </div>
         <svg
           ref={svgRef}
           viewBox="0 0 1200 800"
@@ -760,10 +990,144 @@ export function NetworkStage() {
   );
 }
 
+const REGIONS = [
+  { name: "eu-west", p50: 11 },
+  { name: "us-east", p50: 38 },
+  { name: "ap-south", p50: 74 },
+];
+
+function HeroInstrument() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const readoutRef = useRef<HTMLParagraphElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const readout = readoutRef.current;
+    const context = canvas ? canvas.getContext("2d") : null;
+    if (!canvas || !context) return;
+
+    let hovered = false;
+
+    const paint = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const { width, height } = rect;
+      context.clearRect(0, 0, width, height);
+      const slot = (width - 48) / REGIONS.length;
+
+      REGIONS.forEach((region, index) => {
+        const barHeight = (region.p50 / 90) * (height - 32);
+        const x = 24 + index * slot;
+        const barWidth = slot - 18;
+        context.fillStyle = hovered ? "var(--ink-accent)" : "rgba(128,128,128,0.55)";
+        context.fillRect(x, height - 16 - barHeight, barWidth, barHeight);
+      });
+    };
+
+    const report = (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = (event.clientX - rect.left) / Math.max(rect.width, 1);
+      const index = Math.min(REGIONS.length - 1, Math.max(0, Math.floor(ratio * REGIONS.length)));
+      const region = REGIONS[index];
+      if (readout) readout.textContent = `${region.name} p50 ${region.p50} ms`;
+    };
+
+    const onEnter = () => {
+      hovered = true;
+      paint();
+    };
+    const onLeave = () => {
+      hovered = false;
+      if (readout) readout.textContent = "eu-west p50 11 ms";
+      paint();
+    };
+
+    canvas.addEventListener("pointerenter", onEnter);
+    canvas.addEventListener("pointermove", report as EventListener);
+    canvas.addEventListener("pointerleave", onLeave);
+    window.addEventListener("resize", paint);
+
+    paint();
+    return () => {
+      canvas.removeEventListener("pointerenter", onEnter);
+      canvas.removeEventListener("pointermove", report as EventListener);
+      canvas.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("resize", paint);
+    };
+  }, []);
+
+  return (
+    <header className="hero" data-interactive-hero>
+      <div className="hero__copy">
+        <h1 className="hero__title">
+          <span className="line-mask">
+            <span className="line-inner">A request leaves the edge</span>
+          </span>
+          <span className="line-mask">
+            <span className="line-inner">in 4&nbsp;ms</span>
+          </span>
+        </h1>
+        <p className="hero__lede">
+          Four boundaries, one stalled hop, zero dashboards.
+        </p>
+        <div className="hero__actions">
+          <a className="btn" href="#story" data-spell="magnetic-spring">
+            Trace a request
+          </a>
+          <a className="btn btn--ghost" href="#stage">
+            Read the latency budget
+          </a>
+        </div>
+      </div>
+
+      <div className="hero__instrument">
+        <canvas
+          ref={canvasRef}
+          className="hero__gauge"
+          role="img"
+          aria-label="Live region latency gauge driven by pointer position"
+        />
+        <p ref={readoutRef} className="hero__readout" aria-live="polite">
+          eu-west p50 11 ms
+        </p>
+      </div>
+
+      <nav className="keycaps" data-spell="hotkey-hud" aria-label="Section shortcuts">
+        {[
+          { id: "story", key: "1", label: "Path" },
+          { id: "stage", key: "2", label: "Gauge" },
+          { id: "start", key: "3", label: "Start" },
+        ].map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className="keycap"
+            data-jump={entry.id}
+            data-key={entry.key}
+          >
+            <kbd>{entry.key}</kbd>
+            {entry.label}
+          </button>
+        ))}
+      </nav>
+    </header>
+  );
+}
+
 export default function Page() {
   return (
     <main>
+      <HeroInstrument />
       <NetworkStage />
+      <footer id="start" className="cta">
+        <a className="btn" href="#story">
+          Read the latency budget
+        </a>
+      </footer>
     </main>
   );
 }

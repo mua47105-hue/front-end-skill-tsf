@@ -16,6 +16,34 @@ the validator prints:
 GATE 6 PASSED: ALL FRONTEND STUDIO CRITERIA VERIFIED
 ```
 
+## Version 2.0.0 - God-Tier Creative Technologist Edition
+
+v2 adds the layer that separates a competent page from a memorable one: a
+**playable hero instrument** and **named tactile Design Spells**, both enforced
+by the gate rather than left to taste.
+
+What changed:
+
+- **Stage 1** now requires a `Divergent Metaphor Exploration` with three
+  documented concepts (two rejected, one selected) plus a `Hero Interactive
+  Instrument` definition. Choosing the obvious first thought is now a gate
+  failure.
+- **New Spoke 06** (`spoke-06-creative-shaders-physics.md`) ships five complete,
+  copy-pasteable blueprints: a zero-dependency WebGL fragment shader, a React
+  Three Fiber custom shader stage, a critically damped spring engine with
+  magnetic elements, a procedural SVG filter arsenal, and Web Audio plus
+  keyboard-hud Design Spells.
+- **Stage 4** requires `Hero Interactive Instrument` and `Design Spells`
+  sections in the beat sheet.
+- **Stage 5** fails when `DESIGN_VARIANCE >= 6` and the build has no
+  `data-interactive-hero` or fewer than 2 `data-spell` elements.
+- **Spoke 02** adds kinetic typography and variable font physics, binding scroll
+  velocity to optical weight and a clamped skew.
+- **Spoke 03** adds mechanic 2.6, the pinned horizontal gallery corridor.
+- **Stage 6** gains Blind Critic **Axis E: Signature Interactive Hook & Tactile
+  Craft**, and the browser gauntlet now dispatches real pointer input into the
+  hero and measures frame jank.
+
 ## Contents
 
 - [Architecture](#architecture)
@@ -79,12 +107,12 @@ re-proves Phases 1 through 5.
 
 | # | Stage | Artifact | What the gate proves |
 | --- | --- | --- | --- |
-| 1 | Product Director | `.studio/01-BRIEF.md` | audience, job-to-be-done, Aesthetic Archetype, and three explicit 1-10 dials (`DESIGN_VARIANCE`, `MOTION_INTENSITY`, `VISUAL_DENSITY`) |
+| 1 | Product Director | `.studio/01-BRIEF.md` | audience, job-to-be-done, Aesthetic Archetype, three explicit 1-10 dials, all 3 divergent metaphor steps, and a `data-interactive-hero` definition |
 | 2 | Visual Researcher | `.studio/02-MOODBOARD.md` | a Named, Fetchable, Comparable bar with real `https://` references and extracted hero, grid, type, and media mechanics |
 | 3 | Design Systems Architect | `.studio/03-TOKENS.css` | perceptual `oklch()` colors from `--brand-hue` / `--accent-hue`, fluid `clamp()` type scale, font tokens, zero banned AI hexes |
-| 4 | Principal UX & Motion Architect | `.studio/04-BEAT-SHEET.md` | section-by-section rhythm with no adjacent 3-column card rows, plus the scrollytelling beat table when motion is involved |
-| 5 | Senior Frontend Engineer | your source tree | zero truncation, `prefers-reduced-motion` present, and every `data-camera` / `data-layer` value resolving to a real `id` |
-| 6 | QA & Blind Creative Critic | `.studio/06-GAUNTLET-REPORT.md` | screenshots, 0 console/page errors, 0 overflow, 100% step activation, blind comparison, a real polish pass, and a `WIN` verdict |
+| 4 | Principal UX & Motion Architect | `.studio/04-BEAT-SHEET.md` | section rhythm with no adjacent 3-column card rows, a `Hero Interactive Instrument` spec, 2+ `Design Spells`, and the scrollytelling beat table when motion is involved |
+| 5 | Senior Frontend Engineer | your source tree | zero truncation, `prefers-reduced-motion` present, every `data-camera` / `data-layer` resolving to a real `id`, and at `DESIGN_VARIANCE >= 6` a `data-interactive-hero` plus 2+ `data-spell` elements |
+| 6 | QA & Blind Creative Critic | `.studio/06-GAUNTLET-REPORT.md` | screenshots, 0 console/page errors, 0 overflow, 100% step activation, clean hero interaction, low frame jank, blind comparison, a real polish pass, and a `WIN` verdict |
 
 ## The Five Spokes
 
@@ -94,7 +122,8 @@ re-proves Phases 1 through 5.
 | 02 | `references/spoke-02-tokens-antislop.md` | the Anti-Slop Ban List (fonts, AI hexes, layout tells), single-hue OKLCH token math, fluid type scale, spacing grid, easing |
 | 03 | `references/spoke-03-scrollytelling-layout.md` | anti-template page rhythm, the 5 canonical scrollytelling mechanics, engineering invariants, and the beat sheet template |
 | 04 | `references/spoke-04-implementation-craft.md` | full-output enforcement, a zero-dependency SVG camera controller, a React + Tailwind v4 + GSAP pinned stage, specificity rules, reduced motion |
-| 05 | `references/spoke-05-gauntlet-verification.md` | headless runtime verification, the blind comparison protocol, the 4 critic axes, and the gauntlet report template |
+| 05 | `references/spoke-05-gauntlet-verification.md` | headless runtime verification, the blind comparison protocol, the 5 critic axes, and the gauntlet report template |
+| 06 | `references/spoke-06-creative-shaders-physics.md` | the WebGL, R3F, spring-physics, SVG-filter, and Web Audio / hotkey-hud blueprints behind `data-interactive-hero` and `data-spell` |
 
 The hub instructs the agent to load exactly one spoke per stage. That is the
 point: loading all five at once is what causes context rot.
@@ -249,11 +278,18 @@ It fails on:
 `scripts/playwright_gauntlet.js` runs headless Chromium at Desktop
 `1440x900` and Mobile `390x844`, trapping console errors and page errors,
 checking `documentElement.scrollWidth <= window.innerWidth`, verifying every
-`<img>` decoded, and scrolling each `[data-step]` into view to confirm its
-active state updates. It writes `desktop-1440x900.png`, `mobile-390x844.png`,
-and `report.json` into `--out`, prints a human summary plus JSON, and exits `1`
-on any failure. Without Playwright installed it prints exact install commands
-and exits `2`, because **blocked is not won**.
+`<img>` decoded, scrolling each `[data-step]` into view to confirm its active
+state updates, dispatching synthetic `pointerenter` / `pointermove` / `click`
+into the first `[data-interactive-hero]` to prove the instrument survives real
+input, and sampling 20 animation frames during a scroll nudge to count jank
+frames. It writes `desktop-1440x900.png`, `mobile-390x844.png`, and
+`report.json` into `--out`, prints a human summary plus JSON, and exits `1` on
+any failure. Without Playwright installed it prints exact install commands and
+exits `2`, because **blocked is not won**.
+
+Playwright is resolved from the **target project's** `node_modules` first,
+since the skill itself ships no dependency, so the gauntlet works from a plain
+`npm install -D playwright` in the project under test.
 
 ## What It Rejects
 
@@ -269,6 +305,8 @@ The Anti-Slop Ban List, enforced by gates and by the blind critic:
 - Cards nested inside cards.
 - An arrow on every CTA.
 - One random italicized or accented word per headline.
+- A hero that is a screenshot, with no `data-interactive-hero` and no named
+  tactile interaction, at a `DESIGN_VARIANCE` that promised both.
 - `TODO:`, `Lorem ipsum`, `Acme Corp`, and every lazy truncation stub.
 
 ## Repository Layout
@@ -289,7 +327,8 @@ The Anti-Slop Ban List, enforced by gates and by the blind critic:
 │       │   ├── spoke-02-tokens-antislop.md
 │       │   ├── spoke-03-scrollytelling-layout.md
 │       │   ├── spoke-04-implementation-craft.md
-│       │   └── spoke-05-gauntlet-verification.md
+│       │   ├── spoke-05-gauntlet-verification.md
+│       │   └── spoke-06-creative-shaders-physics.md
 │       └── scripts/
 │           ├── verify_gate.py                 # deterministic gate validator (stdlib only)
 │           └── playwright_gauntlet.js        # headless browser inspector
@@ -311,17 +350,27 @@ The suite covers:
 
 - All six gates passing on a valid mock studio plus a valid scrollytelling page.
 - Cumulative behavior: a broken Phase 1 artifact fails Phases 4, 5, and 6.
-- Phase 1 failing on missing or out-of-range dial integers.
+- Phase 1 failing on missing or out-of-range dial integers, on a missing
+  `Divergent Metaphor Exploration`, and on an unmarked hero instrument.
 - Phase 2 failing when reference URLs are absent.
-- Phase 3 failing on `#6366f1` and `#a855f7`.
-- Phase 5 failing on `TODO:`, `FIXME:`, `Lorem ipsum`, and comment stubs.
-- Phase 5 failing when `data-camera="cam-missing"` has no matching SVG `id`,
-  and when it reports every orphan by exact name.
-- Phase 5 failing when `prefers-reduced-motion` is omitted.
-- Phase 6 failing without a `WIN` verdict and re-verifying the implementation.
+- Phase 3 failing on `#6366f1`, `#a855f7`, and the terracotta `#d97757`.
+- Phase 4 failing without `Hero Interactive Instrument` or `Design Spells`, and
+  when a high `MOTION_INTENSITY` declares no scrollytelling steps.
+- Phase 5 failing on `TODO:`, `FIXME:`, `Lorem ipsum`, `Acme Corp`, and comment
+  stubs; on `data-camera="cam-missing"` with no matching SVG `id`; when it
+  reports every orphan by exact name; when `prefers-reduced-motion` is omitted;
+  when React/TSX step arrays reference ids that do not exist; and, at
+  `DESIGN_VARIANCE >= 6`, when `data-interactive-hero` or 2 `data-spell`
+  elements are missing.
+- Phase 6 failing without a `WIN` verdict, on an unedited `<WIN | BLOCKED>`
+  template, on non-zero console or page error counts, and re-verifying the
+  implementation.
 - The architecture contract: the hub stays under 260 lines, carries no em or
-  en dashes, declares valid frontmatter, and the validator imports nothing
-  outside the standard library.
+  en dashes, declares valid frontmatter, routes all 6 spokes, and the validator
+  imports nothing outside the standard library.
+- Spoke 06 shipping real blueprints: WebGL uniforms, DPR clamp, Hooke's law,
+  the SVG filter arsenal, Web Audio, and View Transitions are all asserted
+  present, with zero truncation markers.
 
 ## License
 

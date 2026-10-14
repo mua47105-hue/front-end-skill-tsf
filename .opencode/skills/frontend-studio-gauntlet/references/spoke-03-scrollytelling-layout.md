@@ -125,9 +125,119 @@ autoplay never starts without a user gesture.
 - Quantitative trend: **2.3 Scroll-Scrubbed Progress**.
 - Inherently temporal: **2.4 Moviescroller**.
 - Hands-on model: **2.5 Show-and-Play**.
+- Side-by-side comparison of peers: **2.6 Pinned Horizontal Corridor**.
 
 Never combine 2.2 and 2.4 in one stage. Two competing pins means two competing
 scroll consumers, and the reader fights the page.
+
+### 2.6 Pinned Horizontal Gallery Corridor
+
+The vertical page becomes a horizontal track. A `300vh` section is pinned while
+its inner `100vh` track slides sideways, converting vertical scroll progress
+`0..1` into a horizontal `translate3d`.
+
+Contract: the outer section owns the scroll distance, the inner track is the
+sticky viewport, and `--scroll-progress` from section 2.3 drives the
+translation.
+
+```html
+<section class="corridor" id="regions" aria-label="Regional latency corridor">
+  <div class="corridor__viewport">
+    <div class="corridor__track" id="corridor-track">
+      <article class="corridor__panel" data-corridor-panel>
+        <h2>eu-west</h2>
+        <p class="corridor__metric">p50 11 ms</p>
+      </article>
+      <article class="corridor__panel" data-corridor-panel>
+        <h2>us-east</h2>
+        <p class="corridor__metric">p50 38 ms</p>
+      </article>
+      <article class="corridor__panel" data-corridor-panel>
+        <h2>ap-south</h2>
+        <p class="corridor__metric">p50 74 ms</p>
+      </article>
+    </div>
+  </div>
+</section>
+```
+
+```css
+.corridor { height: 300vh; position: relative; }
+.corridor__viewport {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: clip;
+  display: flex;
+  align-items: center;
+}
+.corridor__track {
+  display: flex;
+  gap: var(--space-6);
+  padding-inline: var(--space-9);
+  will-change: transform;
+  transform: translate3d(calc(var(--scroll-progress) * -66.66%), 0, 0);
+}
+.corridor__panel {
+  flex: 0 0 auto;
+  width: min(70vw, 720px);
+  min-height: 44vh;
+  padding: var(--space-7);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-elevated);
+}
+```
+
+```js
+const corridor = document.getElementById('regions');
+const track = document.getElementById('corridor-track');
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+const narrow = window.matchMedia('(max-width: 900px)');
+let corridorFrame = 0;
+
+function corridorEnabled() {
+  return !reduced.matches && !narrow.matches;
+}
+
+function publishCorridor() {
+  if (!corridorEnabled()) {
+    track.style.transform = '';
+    return;
+  }
+  const rect = corridor.getBoundingClientRect();
+  const travel = rect.height - window.innerHeight;
+  const progress = travel > 0 ? Math.min(Math.max(-rect.top / travel, 0), 1) : 0;
+  track.style.setProperty('--scroll-progress', progress.toFixed(4));
+}
+
+function onCorridorScroll() {
+  if (corridorFrame) return;
+  corridorFrame = window.requestAnimationFrame(() => {
+    publishCorridor();
+    corridorFrame = 0;
+  });
+}
+
+window.addEventListener('scroll', onCorridorScroll, { passive: true });
+narrow.addEventListener('change', publishCorridor);
+reduced.addEventListener('change', publishCorridor);
+publishCorridor();
+```
+
+Invariants for 2.6:
+
+- The `-66.66%` matches three panels at `70vw` plus gaps in a `100vw`
+  viewport. Recompute it whenever the panel count or width changes.
+- Collapse to a normal vertical stack below `900px` or under reduced motion.
+  A horizontal corridor that traps scroll is a hard failure, not a preference.
+- Clear `transform` entirely when disabled rather than setting it to `none`,
+  so the track inherits no stale `will-change`.
+- `overflow: clip` on the viewport, never `hidden`, or the sticky child breaks.
+- One pinned section at a time: the corridor and the Stage 4 story stage cannot
+  both pin.
+
+## 3. Engineering Invariants for Scrollytelling
 
 ## 3. Engineering Invariants for Scrollytelling
 
@@ -239,6 +349,35 @@ Mechanic chosen: <Graphic Sequence | Pan-and-Zoom Camera Stage | Scroll-Scrubbed
 Repetition ban: no two adjacent sections share a layout archetype. No two
 adjacent sections may both be 3-column card rows. Section 2 is the only pinned
 section.
+
+## Hero Interactive Instrument
+
+The first viewport is a playable centerpiece marked `data-interactive-hero`,
+never a static headline plus a screenshot. State the mechanics and the bindings.
+
+| Property | Value |
+| --- | --- |
+| Element | <canvas / SVG / DOM, with the `data-interactive-hero` attribute> |
+| Mechanic | <shader field, spring rig, scrubbed instrument, live counter> |
+| Input bindings | <pointermove, pointerdown, drag, wheel, hotkey, state toggle> |
+| Uniforms or state | <what the pointer and scroll feed into> |
+| Response budget | <the ms from input to visible change> |
+| Reduced motion | <the still frame that replaces the loop> |
+| Idle cost | <what it does when offscreen or at rest> |
+
+## Design Spells
+
+At least 2 signature tactile micro-interactions, each marked
+`data-spell="<name>"`, chosen from spoke 6.
+
+| Spell | Element | Trigger | Tactile result | Reduced motion |
+| --- | --- | --- | --- | --- |
+| <magnetic-spring> | <the button or card> | <pointer proximity> | <pulls toward cursor, overshoots back> | <no transform> |
+| <hotkey-hud> | <the keycap row> | <press 1-5> | <smooth jump, keycap flash> | <instant jump> |
+| <sound-toggle> | <the mute control> | <click> | <12 ms synthesized click> | <silent> |
+| <analog-grain> | <the surface> | <always on> | <film grain texture> | <filter removed> |
+| <liquid-refraction> | <the image> | <hover or scroll> | <turbulence displacement> | <filter removed> |
+| <view-transition> | <the morph target> | <state toggle> | <morphing transition> | <direct update> |
 
 ## Scrollytelling Beat Table
 

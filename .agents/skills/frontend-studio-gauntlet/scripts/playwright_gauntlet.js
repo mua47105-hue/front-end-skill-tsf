@@ -36,6 +36,7 @@
 
 const { existsSync } = require("node:fs");
 const { mkdir, writeFile } = require("node:fs/promises");
+const { createRequire } = require("node:module");
 const path = require("node:path");
 const process = require("node:process");
 const { pathToFileURL } = require("node:url");
@@ -174,15 +175,61 @@ function parseArgs(argv) {
   return options;
 }
 
+/**
+ * Resolve and load Playwright.
+ *
+ * A bare "playwright" specifier resolves relative to *this script*, which
+ * lives inside the skill directory, not the project under test. The project
+ * is where Playwright is installed, so every candidate resolution root is
+ * tried explicitly, starting with the target project.
+ */
 async function loadPlaywright() {
+  const roots = [
+    process.cwd(),
+    path.join(process.cwd(), "node_modules"),
+    __dirname,
+    path.join(__dirname, "..", "node_modules"),
+    path.join(__dirname, "..", "..", "..", "node_modules"),
+  ].filter((root) => {
+    try {
+      return existsSync(root);
+    } catch {
+      return false;
+    }
+  });
+
+  // 1. CommonJS load resolved from each root.
+  for (const root of roots) {
+    try {
+      const scoped = createRequire(path.join(root, "gauntlet-resolution-anchor.js"));
+      const resolved = scoped.resolve("playwright");
+      const loaded = scoped(resolved);
+      if (loaded && loaded.chromium) return loaded;
+    } catch {
+      // try the next root
+    }
+  }
+
+  // 2. ESM-only build of Playwright, still resolved from the target project.
+  for (const root of roots) {
+    try {
+      const scoped = createRequire(path.join(root, "gauntlet-resolution-anchor.js"));
+      const resolved = scoped.resolve("playwright");
+      const loaded = await import(pathToFileURL(resolved).href);
+      if (loaded && loaded.chromium) return loaded;
+    } catch {
+      // try the next root
+    }
+  }
+
+  // 3. Last resort: a plain dynamic import from the ambient resolution path.
   try {
     const mod = await import("playwright");
     if (mod && mod.chromium) return mod;
-  } catch (error) {
-    if (error && error.code === "ERR_MODULE_NOT_FOUND") return null;
-    if (error && error.code === "ERR_DLOPEN_FAILED") return null;
-    throw error;
+  } catch {
+    // fall through to the install hint
   }
+
   return null;
 }
 
@@ -258,6 +305,15 @@ async function collectMetrics(page) {
       imageCount: images.length,
       brokenImages: broken,
       stepCount: document.querySelectorAll("[data-step]").length,
+      interactiveHeroCount: document.querySelectorAll("[data-interactive-hero]").length,
+      spellCount: document.querySelectorAll("[data-spell]").length,
+      spellNames: Array.from(
+        new Set(
+          Array.from(document.querySelectorAll("[data-spell]"))
+            .map((node) => node.getAttribute("data-spell"))
+            .filter(Boolean)
+        )
+      ),
       overflowOffender: widest,
       reducedMotionRules,
     };
@@ -333,6 +389,146 @@ async function resetScrollToTop(page) {
     root.style.scrollBehavior = previousBehavior;
   });
   await page.waitForTimeout(150);
+}
+
+/**
+ * Drive the first [data-interactive-hero] with synthetic pointer and click
+ * events and prove that doing so raises no new console or page errors.
+ *
+ * A hero instrument that only works until you touch it is a broken hero, and
+ * a shader or spring rig wired to a pointer is exactly where that failure
+ * hides: uninitialised contexts, undefined uniforms, null refs on the first
+ * move.
+ */
+async function interactWithHero(page, consoleErrors, pageErrors) {
+  const before = { consoleErrors: consoleErrors.length, pageErrors: pageErrors.length };
+
+  const target = await page.evaluate(() => {
+    const hero = document.querySelector("[data-interactive-hero]");
+    if (!hero) return null;
+    hero.scrollIntoView({ block: "center", behavior: "instant" });
+    const rect = hero.getBoundingClientRect();
+    return {
+      tag: hero.tagName.toLowerCase(),
+      id: hero.id || "",
+      spells: Array.from(hero.querySelectorAll("[data-spell]")).map((n) =>
+        n.getAttribute("data-spell")
+      ),
+      box: {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height,
+      },
+    };
+  });
+
+  if (!target) {
+    return { found: false, passed: true, detail: "no [data-interactive-hero] on this page" };
+  }
+
+  await page.waitForTimeout(120);
+  await page.mouse.move(target.box.x, target.box.y);
+  await page.mouse.move(target.box.x - 40, target.box.y - 24, { steps: 6 });
+  await page.mouse.move(target.box.x + 32, target.box.y + 18, { steps: 6 });
+  await page.waitForTimeout(150);
+
+  // pointerenter plus an explicit click, dispatched in-page so listeners bound
+  // to either the hero or an inner control are both exercised.
+  const dispatched = await page.evaluate(() => {
+    const hero = document.querySelector("[data-interactive-hero]");
+    if (!hero) return 0;
+    const rect = hero.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    };
+    hero.dispatchEvent(new PointerEvent("pointerenter", init));
+    hero.dispatchEvent(new PointerEvent("pointermove", init));
+    const control = hero.matches("button, a, [role='button']")
+      ? hero
+      : hero.querySelector("button, a, [role='button']");
+    if (control) control.dispatchEvent(new MouseEvent("click", init));
+    return control ? 1 : 0;
+  });
+
+  await page.waitForTimeout(250);
+
+  const newConsoleErrors = consoleErrors.length - before.consoleErrors;
+  const newPageErrors = pageErrors.length - before.pageErrors;
+  const clean = newConsoleErrors === 0 && newPageErrors === 0;
+
+  const parts = [
+    `hero <${target.tag}${target.id ? ` id="${target.id}"` : ""}>`,
+    `${target.spells.length} spell(s) inside the hero`,
+    `click dispatched: ${dispatched ? "yes" : "no"}`,
+    `+${newConsoleErrors} console.error, +${newPageErrors} pageerror`,
+  ];
+
+  return {
+    found: true,
+    passed: clean,
+    newConsoleErrors,
+    newPageErrors,
+    spellsInHero: target.spells,
+    detail: parts.join(", "),
+  };
+}
+
+/**
+ * Sample 20 requestAnimationFrame callbacks during a small scroll nudge and
+ * report how many took longer than 50ms. A high jank count means the page is
+ * shipping a main-thread-blocking render loop, which is invisible in a
+ * screenshot and obvious to a reader on a mid-range laptop.
+ */
+async function measureFrameStability(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const sample = 20;
+        const durations = [];
+        let previous = performance.now();
+        let index = 0;
+        let nudge = 0;
+
+        const tick = (now) => {
+          durations.push(now - previous);
+          previous = now;
+          index += 1;
+
+          if (index % 6 === 0) {
+            nudge = nudge === 0 ? 180 : -180;
+            const root = document.documentElement;
+            const previousBehavior = root.style.scrollBehavior;
+            root.style.scrollBehavior = "auto";
+            window.scrollBy({ top: nudge, left: 0, behavior: "instant" });
+            root.style.scrollBehavior = previousBehavior;
+          }
+
+          if (index >= sample) {
+            const jankFrames = durations.filter((d) => d > 50).length;
+            const worst = durations.reduce((max, d) => Math.max(max, d), 0);
+            const total = durations.reduce((sum, d) => sum + d, 0);
+            resolve({
+              frames: sample,
+              jankFrames,
+              worstFrameMs: Math.round(worst * 100) / 100,
+              averageFrameMs: Math.round((total / sample) * 100) / 100,
+            });
+            return;
+          }
+
+          window.requestAnimationFrame(tick);
+        };
+
+        window.requestAnimationFrame(tick);
+      })
+  );
 }
 
 async function inspectViewport(browser, viewport, target, options, outDir) {
@@ -442,6 +638,34 @@ async function inspectViewport(browser, viewport, target, options, outDir) {
       );
     }
 
+    // Axis E: the hero instrument must survive real input without throwing.
+    const heroInteraction = await interactWithHero(page, consoleErrors, pageErrors);
+    record(
+      "interactive hero input",
+      heroInteraction.passed,
+      heroInteraction.detail
+    );
+
+    // Frame stability during a scroll nudge: a loop that never sleeps or a
+    // shader with an unclamped DPR shows up here and nowhere else.
+    const frameStability = await measureFrameStability(page);
+    record(
+      "frame stability",
+      frameStability.jankFrames <= 2,
+      `${frameStability.jankFrames}/${frameStability.frames} frame(s) over 50ms ` +
+        `(worst ${frameStability.worstFrameMs}ms, average ${frameStability.averageFrameMs}ms)`
+    );
+
+    record(
+      "design spells",
+      metrics.spellCount >= 2 || metrics.interactiveHeroCount === 0,
+      metrics.interactiveHeroCount === 0
+        ? "no [data-interactive-hero] on this page, spell minimum not enforced"
+        : metrics.spellCount >= 2
+          ? `${metrics.spellCount} data-spell element(s): ${metrics.spellNames.join(", ")}`
+          : `only ${metrics.spellCount} data-spell element(s) (${metrics.spellNames.join(", ") || "none"}); at least 2 required`
+    );
+
     // The step loop leaves the viewport parked at the last step, which leaves
     // sticky stages stuck at the bottom of the story section. Return to the top
     // of the document so the captured frame shows the real page.
@@ -463,6 +687,8 @@ async function inspectViewport(browser, viewport, target, options, outDir) {
       failedRequests,
       metrics,
       steps,
+      heroInteraction,
+      frameStability,
       checks,
       passed: checks.every((check) => check.passed),
     };
@@ -477,6 +703,8 @@ async function inspectViewport(browser, viewport, target, options, outDir) {
     failedRequests,
     metrics: null,
     steps: [],
+    heroInteraction: null,
+    frameStability: null,
     checks,
     passed: false,
   };
@@ -513,6 +741,20 @@ function renderHumanSummary(results, target) {
       lines.push(
         `         document height: ${result.metrics.pageHeight}px, title: ${result.metrics.title || "(none)"}`
       );
+      lines.push(
+        `         interactive hero elements: ${result.metrics.interactiveHeroCount}, ` +
+          `design spells: ${result.metrics.spellCount}` +
+          (result.metrics.spellNames.length
+            ? ` (${result.metrics.spellNames.join(", ")})`
+            : "")
+      );
+      if (result.frameStability) {
+        lines.push(
+          `         frame stability: ${result.frameStability.jankFrames}/${result.frameStability.frames} ` +
+            `jank frames, worst ${result.frameStability.worstFrameMs}ms, ` +
+            `average ${result.frameStability.averageFrameMs}ms`
+        );
+      }
       if (result.failedRequests.length) {
         lines.push(`         informational: ${result.failedRequests.length} failed request(s)`);
       }

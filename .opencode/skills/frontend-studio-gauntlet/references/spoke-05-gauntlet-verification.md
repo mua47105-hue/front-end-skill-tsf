@@ -44,6 +44,9 @@ exits 2. That is a `BLOCKED` state, never a `WIN`.
 | Horizontal overflow | `documentElement.scrollWidth <= window.innerWidth` | the mobile scroll-jank tell |
 | Broken images | every `<img>` has `complete && naturalWidth > 0` | empty hero art |
 | Step activation | every `[data-step]` reaches active state on scroll | broken scrollytelling |
+| Interactive hero input | pointer and click into `[data-interactive-hero]` raise 0 new errors | an instrument that only works untouched is broken |
+| Frame stability | at most 2 of 20 sampled frames exceed 50ms | a render loop that never sleeps |
+| Design spells | 2 or more `data-spell` elements when a hero instrument exists | unnamed delight reads as noise |
 
 Two contexts run every check:
 
@@ -113,6 +116,31 @@ Squint until the text blurs. Is the hierarchy still legible?
 
 Fail condition: a banned default font family with no display counterpart, or a
 type scale where the hero is 1.2x the h1.
+
+#### Axis E: Signature Interactive Hook & Tactile Craft
+
+> "The page has a pulse." Or it does not.
+
+Ask: if I moved the pointer, did *something specific* change, and did it feel
+deliberate rather than twitchy? Then count the live Design Spells.
+
+- 8 or 9: the hero instrument responds within 100ms of input, at least 2
+  distinct `data-spell` behaviors are live and observable, and springs settle
+  rather than oscillate.
+- 5 or 6: exactly one interactive element, everything else static.
+- 3 or 4: the hero is a screenshot and the CTAs only change hover color.
+
+Verification method: run `playwright_gauntlet.js`, which dispatches synthetic
+`pointerenter`, `pointermove`, and `click` into the first
+`[data-interactive-hero]` and fails on any resulting error. Confirm by hand
+that the interaction is *perceptible*, not merely error-free.
+
+Fail conditions:
+
+- No `data-interactive-hero` anywhere on the page.
+- Fewer than 2 `data-spell="..."` elements, or spells declared but never wired.
+- An animation loop that never sleeps, showing sustained CPU while idle.
+- Motion that ignores `prefers-reduced-motion: reduce`.
 
 #### Axis D: The Coco Chanel Polish Rule
 
@@ -194,6 +222,8 @@ Command: node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.js --u
 - console.error count: <n>
 - pageerror count: <n>
 - Broken images: <n of m>
+- Hero interaction errors (+errors from pointer input): <n>
+- Jank frames (of 20 sampled, over 50ms): <n>
 - Details: <exact text of every error, or "none">
 
 ## Horizontal Overflow Check
@@ -226,6 +256,20 @@ Activation rate: <n>/<n>
 | B. Section rhythm variance | <1-10> | <1-10> | <n> | pass/fail |
 | C. Typographic tension | <1-10> | <1-10> | <n> | pass/fail |
 | D. Coco Chanel polish | <1-10> | <1-10> | <n> | pass/fail |
+| E. Interactive hook & tactile craft | <1-10> | <1-10> | <n> | pass/fail |
+
+### Interactive Hook Verification
+
+| Check | Result |
+| --- | --- |
+| `data-interactive-hero` count | <n> |
+| `data-spell` element count | <n> |
+| Distinct spell names | <names> |
+| Pointer input produced a visible change | yes/no |
+| Keyboard input produced a visible change | yes/no |
+| Springs settle, no oscillation | yes/no |
+| Idle CPU returns to zero | yes/no |
+| Reduced motion yields a still frame | yes/no |
 
 ## Round 1 Critic Findings & Fixes Applied
 
