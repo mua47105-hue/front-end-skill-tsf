@@ -77,5 +77,5 @@ Phase 6 run. Never report "done" before that line appears.
 
 - `scripts/verify_gate.py` uses the **Python 3 standard library only**. Do not
   add third-party imports.
-- `scripts/playwright_gauntlet.mjs` uses Playwright if installed and degrades
+- `scripts/playwright_gauntlet.js` uses Playwright if installed and degrades
   gracefully with actionable install instructions if it is not.

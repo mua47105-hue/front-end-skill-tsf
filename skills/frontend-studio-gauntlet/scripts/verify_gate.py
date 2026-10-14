@@ -36,17 +36,33 @@ GATE_MESSAGES = {
 # --------------------------------------------------------------------------
 
 #: Banned truncation stubs. Matching any of these fails the owning phase.
+#: Written with \s+ escapes so this validator never stores the raw forbidden
+#: strings that it is supposed to detect.
 PLACEHOLDER_PATTERNS = (
     ("TODO:", re.compile(r"TODO:")),
     ("FIXME:", re.compile(r"FIXME:")),
-    ("Lorem ipsum", re.compile(r"Lorem ipsum", re.IGNORECASE)),
-    ("... rest of", re.compile(r"\.\.\.\s*rest of", re.IGNORECASE)),
+    ("Lorem ipsum", re.compile(r"Lorem\s+ipsum", re.IGNORECASE)),
+    ("... rest of", re.compile(r"\.\.\.\s*rest\s+of", re.IGNORECASE)),
     ("// ...", re.compile(r"//\s*\.\.\.")),
     ("<!-- ... -->", re.compile(r"<!--\s*\.\.\.")),
+    ("Acme-Corp", re.compile(r"\bAcme\s+Corp\b", re.IGNORECASE)),
+    ("Lorem-Inc", re.compile(r"\bLorem\s+Inc\b", re.IGNORECASE)),
+    ("Your-text-here", re.compile(r"Your\s+text\s+here", re.IGNORECASE)),
+    (
+        "<template-placeholder>",
+        re.compile(
+            r"<(?:one line[^>\n]*|specific title[^>\n]*|working-url[^>\n]*|"
+            r"concrete defect|specific change|chanel subtraction[^>\n]*|"
+            r"chandel subtraction[^>\n]*|WIN\s*\|\s*BLOCKED|1-10)>",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 #: Default AI palette tells. Never allowed in the token system.
-BANNED_HEX = ("#6366f1", "#a855f7", "#8b5cf6")
+#: The last three are the indigo/purple gradient defaults; the terracotta is
+#: the assistant-default warm accent.
+BANNED_HEX = ("#6366f1", "#a855f7", "#8b5cf6", "#d97757")
 
 #: File types the Stage 5 implementation scan inspects.
 SOURCE_SUFFIXES = frozenset(
@@ -88,9 +104,28 @@ SKIP_DIRS = frozenset(
 
 URL_RE = re.compile(r"https?://[^\s)\]\}\"'<>]+")
 INTEGER_RE = re.compile(r"(?<!\d)(\d{1,3})(?!\d)")
-ID_RE = re.compile(r"""\bid\s*=\s*["']([^"']+)["']""")
-DATA_CAMERA_RE = re.compile(r"""\bdata-camera\s*=\s*["']([^"']+)["']""")
-DATA_LAYER_RE = re.compile(r"""\bdata-layer\s*=\s*["']([^"']+)["']""")
+
+#: Scrollytelling ids and attributes must be findable in plain HTML *and* in
+#: JSX/TSX, where values are string expressions: id="x", id={"x"}, id={`x`},
+#: or bound from a step object literal such as { id: "step-01", camera:
+#: "cam-establish", layers: ["edge-network"] }.
+ID_ATTR_RE = re.compile(
+    r"""\bid\s*=\s*(?:["']([^"']+)["']|\{\s*["'`]([^"'`]+)["'`]\s*\})"""
+)
+ID_PROP_RE = re.compile(r"""\bid\s*:\s*["'`]([A-Za-z0-9_-]+)["'`]""")
+
+DATA_CAMERA_RE = re.compile(
+    r"""\bdata-camera\s*=\s*(?:["']([^"']+)["']|\{\s*["'`]([^"'`]+)["'`]\s*\})"""
+)
+DATA_LAYER_RE = re.compile(
+    r"""\bdata-layer\s*=\s*(?:["']([^"']+)["']|\{\s*["'`]([^"'`]+)["'`]\s*\})"""
+)
+STEP_CAMERA_PROP_RE = re.compile(r"""\bcamera\s*:\s*["'`]([A-Za-z0-9_-]+)["'`]""")
+STEP_LAYERS_PROP_RE = re.compile(r"""\blayers\s*:\s*\[([^\]]+)\]""")
+STRING_LITERAL_RE = re.compile(r"""["'`]([A-Za-z0-9_-]+)["'`]""")
+
+#: Characters that mark a JSX expression as dynamic rather than a literal id.
+DYNAMIC_EXPR_CHARS = (".", "(", ")", "[", "]", "$", " ")
 
 
 # --------------------------------------------------------------------------
@@ -304,7 +339,11 @@ def verify_phase_3(studio: Path, report: PhaseReport) -> None:
             "instead of shipping the default AI palette."
         )
     else:
-        report.ok("no banned AI-default hex codes (#6366f1, #a855f7, #8b5cf6)")
+        report.ok(
+            "no banned AI-default hex codes ("
+            + ", ".join(BANNED_HEX)
+            + ")"
+        )
 
     hue_seed = "--brand-hue" in text and "--accent-hue" in text
     if hue_seed:
@@ -348,10 +387,30 @@ def verify_phase_4(studio: Path, report: PhaseReport) -> None:
                 "column mapping them to data-camera targets"
             )
     else:
-        report.ok(
-            "no scrollytelling declared; confirm MOTION_INTENSITY from 01-BRIEF.md "
-            "is below 5 (the beat table is then optional)"
-        )
+        # A high MOTION_INTENSITY dial makes the beat table mandatory, so a
+        # sheet that silently drops scrollytelling fails instead of passing.
+        brief_path = studio / "01-BRIEF.md"
+        motion_dial = None
+        if brief_path.is_file():
+            motion_dial = find_dial(read_text(brief_path), "MOTION_INTENSITY")
+        if motion_dial is not None and motion_dial >= 5:
+            report.fail(
+                f"{path.name} declares no scrollytelling steps, but 01-BRIEF.md "
+                f"sets MOTION_INTENSITY: {motion_dial}. At 5 or above the "
+                "Scrollytelling Beat Table is mandatory: add the data-step, "
+                "data-camera, and data-layer mapping, or lower the dial."
+            )
+        else:
+            observed = (
+                f"MOTION_INTENSITY from 01-BRIEF.md is {motion_dial}"
+                if motion_dial is not None
+                else "MOTION_INTENSITY was not stated in 01-BRIEF.md"
+            )
+            report.ok(
+                "no scrollytelling declared; "
+                f"{observed}, which is below the 5 threshold where the beat "
+                "table becomes mandatory"
+            )
     check_placeholders(text, path.name, report)
 
 
@@ -361,7 +420,12 @@ def verify_phase_4(studio: Path, report: PhaseReport) -> None:
 
 
 def clean_attr_value(raw: str) -> str:
-    """Normalize a JSX or template-literal attribute value to a bare id."""
+    """Normalize a JSX or template-literal attribute value to a bare id.
+
+    Returns ``""`` when the value is a dynamic JS expression rather than a
+    literal id, so ``data-camera={step.camera}`` is skipped instead of being
+    mis-read as the literal string ``step.camera``.
+    """
     value = raw.strip()
     value = value.strip("`").strip()
     while value.startswith("{") and value.endswith("}"):
@@ -369,7 +433,61 @@ def clean_attr_value(raw: str) -> str:
     value = value.strip("`").strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         value = value[1:-1]
-    return value.strip()
+    value = value.strip()
+    if any(char in value for char in DYNAMIC_EXPR_CHARS):
+        return ""
+    return value
+
+
+def extract_defined_ids(combined: str) -> set[str]:
+    """Every id defined in the target: HTML/JSX attributes plus object literals."""
+    ids: set[str] = set()
+    for match in ID_ATTR_RE.finditer(combined):
+        value = clean_attr_value(match.group(1) or match.group(2) or "")
+        if value:
+            ids.add(value)
+    for match in ID_PROP_RE.finditer(combined):
+        value = clean_attr_value(match.group(1))
+        if value:
+            ids.add(value)
+    return ids
+
+
+def extract_scrolly_references(combined: str) -> list[str]:
+    """Every data-camera / data-layer target referenced by a scroll step.
+
+    Static HTML attributes and JSX string literals are always collected. Step
+    object literals (``camera: "cam-x"`` / ``layers: ["a", "b"]``) are only
+    collected when the file actually opts into scrollytelling via a
+    ``data-step`` / ``data-camera`` / ``data-layer`` marker, so unrelated
+    ``camera:`` keys in unrelated code are never mistaken for targets.
+    """
+    references: list[str] = []
+
+    def add(value: str) -> None:
+        cleaned = clean_attr_value(value)
+        if cleaned and cleaned not in references:
+            references.append(cleaned)
+
+    for match in DATA_CAMERA_RE.finditer(combined):
+        add(match.group(1) or match.group(2) or "")
+    for match in DATA_LAYER_RE.finditer(combined):
+        raw = match.group(1) or match.group(2) or ""
+        for part in raw.split(","):
+            add(part)
+
+    uses_scrolly = any(
+        marker in combined
+        for marker in ("data-step", "data-camera", "data-layer")
+    )
+    if uses_scrolly:
+        for match in STEP_CAMERA_PROP_RE.finditer(combined):
+            add(match.group(1))
+        for match in STEP_LAYERS_PROP_RE.finditer(combined):
+            for literal in STRING_LITERAL_RE.findall(match.group(1)):
+                add(literal)
+
+    return references
 
 
 def collect_sources(target: Path) -> list[Path]:
@@ -424,17 +542,8 @@ def verify_phase_5(studio: Path, target: Path | None, report: PhaseReport) -> No
             "Motion work must ship a reduced-motion fallback."
         )
 
-    defined_ids = set(ID_RE.findall(combined))
-    referenced: list[str] = []
-    for value in DATA_CAMERA_RE.findall(combined):
-        name = clean_attr_value(value)
-        if name and name not in referenced:
-            referenced.append(name)
-    for value in DATA_LAYER_RE.findall(combined):
-        for part in value.split(","):
-            name = clean_attr_value(part)
-            if name and name not in referenced:
-                referenced.append(name)
+    defined_ids = extract_defined_ids(combined)
+    referenced = extract_scrolly_references(combined)
 
     if not referenced:
         report.ok("no data-camera / data-layer references to reconcile")
@@ -469,6 +578,11 @@ REPORT_HEADINGS = (
     "Final Verdict",
 )
 
+CONSOLE_ERROR_COUNT_RE = re.compile(r"console\.error\s+count\s*:\s*(\d+)", re.IGNORECASE)
+PAGE_ERROR_COUNT_RE = re.compile(r"pageerror\s+count\s*:\s*(\d+)", re.IGNORECASE)
+TEMPLATE_VERDICT_RE = re.compile(r"<\s*WIN\s*\|\s*BLOCKED\s*>", re.IGNORECASE)
+BLOCKED_VERDICT_RE = re.compile(r"Verdict\s*:\s*BLOCKED", re.IGNORECASE)
+
 
 def verify_phase_6(studio: Path, target: Path | None, report: PhaseReport) -> None:
     if target is None:
@@ -489,10 +603,40 @@ def verify_phase_6(studio: Path, target: Path | None, report: PhaseReport) -> No
     if text is None:
         return
     require_headings(text, REPORT_HEADINGS, path.name, report)
+    check_placeholders(text, path.name, report)
+
+    # A machine pass that reported errors is not a WIN. Both counts must be 0.
+    for label, pattern in (
+        ("console.error count", CONSOLE_ERROR_COUNT_RE),
+        ("pageerror count", PAGE_ERROR_COUNT_RE),
+    ):
+        match = pattern.search(text)
+        if match is None:
+            report.ok(f"{label} not stated in the report")
+        elif int(match.group(1)) > 0:
+            report.fail(
+                f"{path.name} reports {label}: {match.group(1)}. The gauntlet "
+                "must show 0 console errors and 0 page errors before a WIN is "
+                "recorded. Fix them, re-run, and re-capture."
+            )
+        else:
+            report.ok(f"{label}: {match.group(1)}")
 
     marker = text.find("Final Verdict")
     verdict = text[marker:] if marker >= 0 else text
-    if re.search(r"\bWIN\b", verdict):
+
+    if TEMPLATE_VERDICT_RE.search(verdict):
+        report.fail(
+            f"{path.name} still contains the unedited template verdict "
+            "'<WIN | BLOCKED>'. Replace it with the real verdict you observed."
+        )
+    elif BLOCKED_VERDICT_RE.search(verdict):
+        report.fail(
+            f"{path.name} records a BLOCKED verdict. A blocked browser run is "
+            "never a WIN: install Playwright, run the gauntlet for real, then "
+            "rewrite the verdict."
+        )
+    elif re.search(r"\bWIN\b", verdict):
         report.ok("final verdict records a WIN")
     else:
         report.fail(
@@ -500,9 +644,6 @@ def verify_phase_6(studio: Path, target: Path | None, report: PhaseReport) -> No
             "Run the blind comparison and the mandatory refinement pass, or "
             "record BLOCKED with the reason."
         )
-
-    if re.search(r"\b(BLOCKED|WIN)\b", verdict):
-        report.ok("verdict is an explicit state, not an assumption")
 
 
 # --------------------------------------------------------------------------

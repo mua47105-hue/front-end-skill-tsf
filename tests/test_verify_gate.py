@@ -19,6 +19,7 @@ Run with:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -490,7 +491,7 @@ REPORT_TEMPLATE = """# 06 Gauntlet Report
 
 Project: the four-hop edge request story for platform engineers.
 Entry under test: index.html
-Command: node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.mjs --url ./index.html --out .studio/screenshots
+Command: node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.js --url ./index.html --out .studio/screenshots
 
 ## Desktop Screenshot
 
@@ -659,7 +660,7 @@ class TestRepositoryLayout(unittest.TestCase):
             SYNC_SCRIPT,
             HUB_SKILL,
             VERIFY_GATE,
-            SKILL_DIR / "scripts" / "playwright_gauntlet.mjs",
+            SKILL_DIR / "scripts" / "playwright_gauntlet.js",
             Path(__file__).resolve(),
         ]
         required += sorted(SPOKE_DIR.glob("spoke-0*.md"))
@@ -746,7 +747,7 @@ class TestRepositoryLayout(unittest.TestCase):
         targets = [
             VERIFY_GATE,
             SYNC_SCRIPT,
-            SKILL_DIR / "scripts" / "playwright_gauntlet.mjs",
+            SKILL_DIR / "scripts" / "playwright_gauntlet.js",
         ]
         for path in targets:
             text = path.read_text(encoding="utf-8")
@@ -1018,7 +1019,7 @@ class TestPhaseSix(GateTestCase):
             "Verdict: WIN", "Verdict: BLOCKED because Chromium is unavailable"
         )
         self.write("06-GAUNTLET-REPORT.md", report)
-        self.assert_gate_fails(6, self.page_path(), contains="does not record a WIN")
+        self.assert_gate_fails(6, self.page_path(), contains="records a BLOCKED verdict")
 
     def test_fails_when_a_required_heading_is_missing(self):
         report = self.studio_text("06-GAUNTLET-REPORT.md").replace(
@@ -1068,6 +1069,257 @@ class TestCliSurface(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 1)
             self.assertIn("studio directory not found", result.stderr)
+
+
+REACT_TSX_PAGE = '''"use client";
+
+import { useEffect, useRef } from "react";
+
+type Step = {
+  id: string;
+  heading: string;
+  copy: string;
+  camera: string;
+  layers: string[];
+};
+
+const STEPS: Step[] = [
+  {
+    id: "step-01",
+    heading: "Edge ingress",
+    copy: "TLS terminates at the nearest point of presence.",
+    camera: "cam-establish",
+    layers: ["edge-network", "label-origin"],
+  },
+  {
+    id: "step-02",
+    heading: "Region routing",
+    copy: "Weighted routing picks a healthy region.",
+    camera: "cam-node",
+    layers: ["node-primary"],
+  },
+];
+
+export function NetworkStage() {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+  }, []);
+
+  return (
+    <section className="story" aria-label="How a request travels">
+      <div className="steps">
+        {STEPS.map((step) => (
+          <article
+            key={step.id}
+            id={step.id}
+            data-step={step.id}
+            data-camera={step.camera}
+            data-layer={step.layers.join(",")}
+            className="step opacity-40"
+          >
+            <h2>{step.heading}</h2>
+            <p>{step.copy}</p>
+          </article>
+        ))}
+      </div>
+
+      <figure id="stage" className="stage sticky top-0 h-screen">
+        <svg ref={svgRef} viewBox="0 0 1200 800" role="img" aria-label="Edge network topology">
+          <rect id="cam-establish" x="0" y="0" width="1200" height="800" opacity="0" fill="none" />
+          <rect id="cam-node" x="420" y="180" width="420" height="300" opacity="0" fill="none" />
+          <g id="edge-network" className="layer">
+            <path d="M180 520 C 380 380, 700 300, 1010 420" className="edge" />
+          </g>
+          <g id="label-origin" className="layer">
+            <text x="150" y="560">eu-west / fra</text>
+          </g>
+          <g id="node-primary" className="layer">
+            <circle cx="180" cy="520" r="12" className="node" />
+          </g>
+        </svg>
+      </figure>
+    </section>
+  );
+}
+'''
+
+
+class TestAuditRegressions(GateTestCase):
+    """Regression coverage for the post-audit hardening pass."""
+
+    def test_phase_three_fails_on_banned_terracotta_hex(self):
+        tokens = self.studio_text("03-TOKENS.css").replace(
+            "oklch(0.58 0.17 var(--accent-hue))", "#d97757"
+        )
+        self.write("03-TOKENS.css", tokens)
+        result = self.assert_gate_fails(3, contains="#d97757")
+        self.assertIn(
+            "banned AI-default hex code", result.stdout, "the failure must name the ban rule"
+        )
+
+    def test_phase_four_fails_when_motion_intensity_high_but_no_steps(self):
+        # The brief keeps MOTION_INTENSITY at 6, so the beat sheet is mandatory.
+        self.assertIn("MOTION_INTENSITY: 6", self.studio_text("01-BRIEF.md"))
+
+        sheet = self.studio_text("04-BEAT-SHEET.md")
+        # Strip every scrollytelling trace: step ids, data-camera column, and
+        # the camera frame table, leaving a purely static rhythm sheet.
+        sheet = sheet.replace("| step-0", "| beat-0")
+        sheet = sheet.replace("data-camera", "target region")
+        sheet = re.sub(r"^### Camera frames.*?(?=^### )", "", sheet, flags=re.S | re.M)
+        self.assertNotIn("data-step", sheet)
+        self.write("04-BEAT-SHEET.md", sheet)
+
+        result = self.assert_gate_fails(4, contains="MOTION_INTENSITY")
+        self.assertIn("Scrollytelling Beat Table is mandatory", result.stdout)
+
+    def test_phase_five_catches_orphans_in_react_tsx_step_arrays(self):
+        src = self.root / "src"
+        src.mkdir()
+        tsx = src / "NetworkStage.tsx"
+        tsx.write_text(REACT_TSX_PAGE, encoding="utf-8")
+        (src / "globals.css").write_text(
+            "@media (prefers-reduced-motion: reduce) { "
+            "* { transition-duration: 0.01ms !important; } }\n",
+            encoding="utf-8",
+        )
+        self.assert_gate_passes(5, src, message=" for a clean React step array")
+
+        # A camera id that exists nowhere in the SVG stage.
+        broken = tsx.read_text(encoding="utf-8").replace(
+            'camera: "cam-node"', 'camera: "cam-missing"'
+        )
+        tsx.write_text(broken, encoding="utf-8")
+        result = self.assert_gate_fails(5, src, contains="cam-missing")
+        self.assertIn(
+            "orphaned scrollytelling targets",
+            result.stdout,
+            "JSX object-literal cameras must be reconciled like HTML attributes",
+        )
+
+        # A layer id that exists nowhere in the SVG stage.
+        broken_layer = tsx.read_text(encoding="utf-8").replace(
+            'layers: ["node-primary"]', 'layers: ["node-primary", "node-ghost"]'
+        )
+        tsx.write_text(broken_layer, encoding="utf-8")
+        self.assert_gate_fails(5, src, contains="node-ghost")
+
+    def test_phase_five_fails_on_acme_corp_filler(self):
+        page = self.page_text().replace(
+            "Start a 14 day trace trial", "Start your Acme Corp trial"
+        )
+        self.assertIn("Acme Corp", page, "fixture setup must inject the filler")
+        self.write_page("index.html", page)
+        self.assert_gate_fails(5, self.page_path(), contains="Acme-Corp")
+
+    def test_phase_six_rejects_unedited_win_blocked_template(self):
+        report = self.studio_text("06-GAUNTLET-REPORT.md").replace(
+            "Verdict: WIN", "Verdict: <WIN | BLOCKED>"
+        )
+        self.write("06-GAUNTLET-REPORT.md", report)
+        result = self.assert_gate_fails(6, self.page_path())
+        self.assertIn(
+            "unedited template verdict", result.stdout,
+            "the literal <WIN | BLOCKED> must never satisfy the WIN check",
+        )
+        self.assertNotIn("GATE 6 PASSED", result.stdout)
+
+    def test_phase_six_rejects_nonzero_console_or_page_errors(self):
+        report = self.studio_text("06-GAUNTLET-REPORT.md").replace(
+            "- console.error count: 0", "- console.error count: 5"
+        )
+        self.write("06-GAUNTLET-REPORT.md", report)
+        result = self.assert_gate_fails(6, self.page_path())
+        self.assertIn("console.error count: 5", result.stdout)
+
+        report = self.studio_text("06-GAUNTLET-REPORT.md").replace(
+            "- pageerror count: 0", "- pageerror count: 2"
+        )
+        self.write("06-GAUNTLET-REPORT.md", report)
+        self.assert_gate_fails(6, self.page_path(), contains="pageerror count: 2")
+
+
+class TestHarnessMirrors(unittest.TestCase):
+    """The synced harness mirrors must be committed and in sync."""
+
+    longMessage = False
+
+    IGNORED_PATHS = (
+        ".opencode/skills/frontend-studio-gauntlet/",
+        ".agents/skills/frontend-studio-gauntlet/",
+        ".claude/skills/frontend-studio-gauntlet/",
+    )
+
+    def test_gitignore_does_not_ignore_the_harness_mirrors(self):
+        gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        active = [
+            line.strip()
+            for line in gitignore.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        for ignored in self.IGNORED_PATHS:
+            with self.subTest(path=ignored):
+                self.assertNotIn(ignored, active, f"{ignored} must be tracked, not ignored")
+
+    def test_gitignore_still_ignores_generated_runtime_output(self):
+        gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        for keep in (".studio/", "__pycache__/", "*.pyc", "node_modules/", ".DS_Store",
+                     "screenshots/", ".playwright-gauntlet/", "report.json"):
+            with self.subTest(path=keep):
+                self.assertIn(keep, gitignore, f"{keep} must stay ignored")
+
+    def test_mirrors_are_present_and_byte_identical_to_the_source(self):
+        result = subprocess.run(
+            ["bash", str(SYNC_SCRIPT), "--check"],
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"harness mirrors drifted\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+        )
+        self.assertIn("All harness mirrors match", result.stdout)
+
+    def test_plugin_marketplace_manifest_is_valid(self):
+        manifest_path = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+        self.assertTrue(manifest_path.is_file(), "marketplace.json is missing")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["name"], "frontend-studio-gauntlet-marketplace")
+        self.assertIn("owner", manifest)
+        plugins = manifest["plugins"]
+        self.assertEqual(len(plugins), 1)
+        plugin = plugins[0]
+        self.assertEqual(plugin["name"], "frontend-studio-gauntlet")
+        self.assertRegex(plugin["version"], r"^\d+\.\d+\.\d+$")
+        self.assertEqual(plugin["source"], "./")
+        self.assertIn("./skills/frontend-studio-gauntlet", plugin["skills"])
+        for relative in plugin["skills"]:
+            with self.subTest(skill=relative):
+                self.assertTrue((REPO_ROOT / relative).is_dir(), f"{relative} does not exist")
+
+    def test_gauntlet_script_uses_the_mime_safe_js_extension(self):
+        scripts = SKILL_DIR / "scripts"
+        self.assertTrue(
+            (scripts / "playwright_gauntlet.js").is_file(),
+            "playwright_gauntlet.js is required for zip MIME compatibility",
+        )
+        self.assertFalse(
+            (scripts / "playwright_gauntlet.mjs").exists(),
+            "the .mjs variant must be removed, it resolves to application/octet-stream",
+        )
+        source = (scripts / "playwright_gauntlet.js").read_text(encoding="utf-8")
+        self.assertIn('require("node:fs")', source)
+        self.assertIn('require("node:fs/promises")', source)
+        self.assertIn('require("node:path")', source)
+        self.assertIn('require("node:process")', source)
+        self.assertIn('require("node:url")', source)
+        self.assertIn('await import("playwright")', source)
+        self.assertNotIn('from "node:fs"', source)
 
 
 if __name__ == "__main__":

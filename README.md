@@ -203,7 +203,7 @@ python3 skills/frontend-studio-gauntlet/scripts/verify_gate.py --phase 5 --dir .
 
 # run the browser gauntlet
 npm install -D playwright && npx playwright install chromium
-node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.mjs \
+node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.js \
   --url ./index.html --out .studio/screenshots
 ```
 
@@ -246,7 +246,7 @@ It fails on:
 
 ## The Browser Gauntlet
 
-`scripts/playwright_gauntlet.mjs` runs headless Chromium at Desktop
+`scripts/playwright_gauntlet.js` runs headless Chromium at Desktop
 `1440x900` and Mobile `390x844`, trapping console errors and page errors,
 checking `documentElement.scrollWidth <= window.innerWidth`, verifying every
 `<img>` decoded, and scrolling each `[data-step]` into view to confirm its
@@ -292,7 +292,7 @@ The Anti-Slop Ban List, enforced by gates and by the blind critic:
 │       │   └── spoke-05-gauntlet-verification.md
 │       └── scripts/
 │           ├── verify_gate.py                 # deterministic gate validator (stdlib only)
-│           └── playwright_gauntlet.mjs        # headless browser inspector
+│           └── playwright_gauntlet.js        # headless browser inspector
 └── tests/
     └── test_verify_gate.py                    # unittest suite for all six gates
 ```

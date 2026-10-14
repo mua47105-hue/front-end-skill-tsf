@@ -179,7 +179,7 @@ real:
 1. Run the browser inspector at Desktop `1440x900` and Mobile `390x844`:
 
    ```bash
-   node <skill-dir>/scripts/playwright_gauntlet.mjs --url <url-or-file> --out .studio/screenshots
+   node <skill-dir>/scripts/playwright_gauntlet.js --url <url-or-file> --out .studio/screenshots
    ```
 
 2. Require 0 console errors, 0 page errors, 0 broken images, 0 horizontal

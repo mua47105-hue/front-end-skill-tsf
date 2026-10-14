@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * playwright_gauntlet.mjs - automated Stage 6 browser gauntlet.
+ * playwright_gauntlet.js - automated Stage 6 browser gauntlet.
  *
  * Launches headless Chromium twice (Desktop 1440x900 and Mobile 390x844) and
  * proves the runtime is clean:
@@ -14,9 +14,14 @@
  * --out directory, prints a human summary and a JSON block, and exits 1 when
  * any check failed.
  *
+ * Written as CommonJS with universal "node:" built-ins so it runs whether the
+ * surrounding project is CommonJS or ESM, and so skill zip uploaders that
+ * classify by MIME type recognize this file as text/javascript rather than
+ * application/octet-stream (which is what a .mjs extension resolves to).
+ *
  * Usage:
- *   node playwright_gauntlet.mjs --url ./index.html --out .studio/screenshots
- *   node playwright_gauntlet.mjs --url https://example.com --out ./shots --timeout 30000
+ *   node playwright_gauntlet.js --url ./index.html --out .studio/screenshots
+ *   node playwright_gauntlet.js --url https://example.com --out ./shots --timeout 30000
  *
  * Options:
  *   --url <http-url-or-local-path>  target to test (required)
@@ -27,11 +32,13 @@
  *   --headed                        run with a visible browser (debugging only)
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import process from "node:process";
-import { pathToFileURL } from "node:url";
+"use strict";
+
+const { existsSync } = require("node:fs");
+const { mkdir, writeFile } = require("node:fs/promises");
+const path = require("node:path");
+const process = require("node:process");
+const { pathToFileURL } = require("node:url");
 
 const VIEWPORTS = [
   {
@@ -79,10 +86,10 @@ function fail(message) {
 function printHelp() {
   process.stdout.write(
     [
-      "playwright_gauntlet.mjs - Stage 6 browser gauntlet",
+      "playwright_gauntlet.js - Stage 6 browser gauntlet",
       "",
       "Usage:",
-      "  node playwright_gauntlet.mjs --url <http-url-or-local-path> [--out <dir>]",
+      "  node playwright_gauntlet.js --url <http-url-or-local-path> [--out <dir>]",
       "",
       "Options:",
       "  --url <url|path>     target to test (required)",
@@ -290,12 +297,42 @@ async function scrollStepIntoBand(page, index) {
   return page.evaluate((stepIndex) => {
     const element = document.querySelectorAll("[data-step]")[stepIndex];
     if (!element) return null;
+
+    // A page that sets `html { scroll-behavior: smooth }` makes
+    // window.scrollTo({ behavior: "auto" }) animate anyway, because "auto"
+    // inherits the computed value from the scrolling box. A long jump (>= 1
+    // viewport) would still be in flight when the settle timer expires, and
+    // the step would read as inactive. Force the computed behavior to instant
+    // for the duration of the jump, then restore it.
+    const root = document.documentElement;
+    const previousBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+
     const rect = element.getBoundingClientRect();
-    const desired = rect.top - window.innerHeight * 0.42;
-    const next = Math.max(0, Math.min(window.scrollY + desired, document.documentElement.scrollHeight - window.innerHeight));
-    window.scrollTo({ top: next, left: 0, behavior: "auto" });
-    return { id: element.id || element.getAttribute("data-step") || `step-${stepIndex + 1}` };
+    const desired = rect.top - window.innerHeight * 0.4;
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const next = Math.max(0, Math.min(window.scrollY + desired, max));
+    window.scrollTo({ top: next, left: 0, behavior: "instant" });
+
+    root.style.scrollBehavior = previousBehavior;
+
+    return {
+      id: element.id || element.getAttribute("data-step") || `step-${stepIndex + 1}`,
+      scrollY: window.scrollY,
+      target: next,
+    };
   }, index);
+}
+
+async function resetScrollToTop(page) {
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    const previousBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    root.style.scrollBehavior = previousBehavior;
+  });
+  await page.waitForTimeout(150);
 }
 
 async function inspectViewport(browser, viewport, target, options, outDir) {
@@ -404,6 +441,11 @@ async function inspectViewport(browser, viewport, target, options, outDir) {
         `${activated}/${steps.length} [data-step] elements reached an active state on scroll`
       );
     }
+
+    // The step loop leaves the viewport parked at the last step, which leaves
+    // sticky stages stuck at the bottom of the story section. Return to the top
+    // of the document so the captured frame shows the real page.
+    await resetScrollToTop(page);
 
     const filename = `${viewport.label}-${viewport.width}x${viewport.height}.png`;
     await page.screenshot({

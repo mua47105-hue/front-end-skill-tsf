@@ -23,7 +23,7 @@ npx playwright install chromium
 ### 1.2 Run the gauntlet inspector
 
 ```bash
-node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.mjs \
+node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.js \
   --url ./index.html \
   --out .studio/screenshots
 ```
@@ -174,7 +174,7 @@ verdict, and 250 characters minimum.
 
 Project: <one line>
 Entry under test: <path or URL>
-Command: node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.mjs --url <url> --out .studio/screenshots
+Command: node skills/frontend-studio-gauntlet/scripts/playwright_gauntlet.js --url <url> --out .studio/screenshots
 
 ## Desktop Screenshot
 
@@ -234,7 +234,7 @@ Weakest axis: <A|B|C|D>
 | # | Finding | Fix applied | Evidence | Rerun checks |
 | --- | --- | --- | --- | --- |
 | 1 | <concrete defect> | <specific change> | <file + screenshot> | pass/fail |
-| 2 | <chandel subtraction: chrome removed> | <what was removed> | <file + screenshot> | pass/fail |
+| 2 | <chanel subtraction: chrome removed> | <what was removed> | <file + screenshot> | pass/fail |
 
 Round 2 re-capture: <desktop/mobile filenames after fixes>
 Automated checks after fixes: console <n>, pageerror <n>, overflow <pass/fail>
